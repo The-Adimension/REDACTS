@@ -1,0 +1,71 @@
+# ═══════════════════════════════════════════════════════════════════
+# REDACTS DAST — Security Crawl Maze Integration
+# ═══════════════════════════════════════════════════════════════════
+# Extends the core DAST stack with Google's Security Crawl Maze
+# (https://github.com/google/security-crawl-maze) to benchmark
+# REDACTS' dynamic crawling coverage against a known-good testbed.
+#
+# Usage (standalone):
+#   docker compose -f docker-compose.crawlmaze.yml up --build --abort-on-container-exit
+#
+# Usage (combined with REDCap DAST):
+#   docker compose \
+#     -f docker-compose.dast.yml \
+#     -f docker-compose.crawlmaze.yml \
+#     up --build --abort-on-container-exit
+#
+# The crawl maze exposes 100+ test cases covering:
+#   • HTML link extraction (a/href, img/src, form/action, etc.)
+#   • HTTP header-based resources (Link, Location, Refresh, CSP)
+#   • JavaScript dynamic content (event listeners, multi-step requests)
+#   • JS Frameworks (Angular, React, Polymer, AngularJS)
+#   • CSS resource extraction (@font-face, url())
+#   • Miscellaneous (robots.txt, sitemap.xml, string-based URLs)
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+  # ── Google Security Crawl Maze ──
+  crawlmaze:
+    build:
+      context: .
+      dockerfile: Dockerfile.crawlmaze
+    container_name: redacts-crawlmaze
+    restart: "no"
+    ports:
+      - "${CRAWLMAZE_PORT:-8686}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - crawlmaze_net
+
+  # ── Playwright runner targeting Crawl Maze ──
+  playwright-crawlmaze:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    container_name: redacts-crawlmaze-playwright
+    restart: "no"
+    depends_on:
+      crawlmaze:
+        condition: service_healthy
+    environment:
+      CRAWLMAZE_BASE_URL: "http://crawlmaze:8080"
+      DAST_RESULTS_DIR: "/results"
+      CRAWLMAZE_MODE: "true"
+    volumes:
+      - ./results:/results
+      - ./tests:/tests:ro
+    networks:
+      - crawlmaze_net
+    command: >
+      npx playwright test tests/crawlmaze-coverage.spec.ts
+      --reporter=json
+      --timeout=120000
+
+networks:
+  crawlmaze_net:
+    driver: bridge

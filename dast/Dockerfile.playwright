@@ -1,0 +1,25 @@
+# ═══════════════════════════════════════════════════════════════════
+# REDACTS DAST — Playwright Runner Container
+# ═══════════════════════════════════════════════════════════════════
+# Headless Chromium + Playwright + Node 20 for DAST test execution.
+# Minimal image — no dev tools, no GUI.
+# ═══════════════════════════════════════════════════════════════════
+
+FROM mcr.microsoft.com/playwright:v1.51.0-noble
+
+WORKDIR /app
+
+# Copy test infrastructure
+COPY package.json package-lock.json* ./
+RUN npm ci --ignore-scripts && npx playwright install chromium --with-deps
+
+COPY playwright.config.ts ./
+COPY tests/ ./tests/
+COPY helpers/ ./helpers/
+
+# Wait script — poll REDCap until HTTP 200 before running tests
+COPY wait-for-redcap.sh /usr/local/bin/wait-for-redcap.sh
+RUN chmod +x /usr/local/bin/wait-for-redcap.sh
+
+ENTRYPOINT ["/usr/local/bin/wait-for-redcap.sh"]
+CMD ["npx", "playwright", "test", "--reporter=json,html"]

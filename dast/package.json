@@ -1,0 +1,20 @@
+{
+  "name": "redacts-dast",
+  "version": "1.0.0",
+  "description": "REDACTS Dynamic Application Security Testing — Playwright tests for REDCap",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:export": "playwright test tests/export-report.spec.ts",
+    "test:admin": "playwright test tests/admin-access.spec.ts",
+    "test:upgrade": "playwright test tests/upgrade-flow.spec.ts",
+    "report": "playwright show-report results/html-report",
+    "dast:up": "docker compose -f docker-compose.dast.yml up --build --abort-on-container-exit",
+    "dast:down": "docker compose -f docker-compose.dast.yml down -v"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  }
+}

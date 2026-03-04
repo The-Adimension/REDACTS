@@ -1,0 +1,68 @@
+# ═══════════════════════════════════════════════════════════════════
+# REDACTS — .gitignore
+# ═══════════════════════════════════════════════════════════════════
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# mypy / pytest
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# REDACTS output
+output/
+_test_out/
+
+# REDCap source files (licensed — never commit)
+input/*.zip
+input/*.tar.gz
+targets/
+*.sql
+
+# DAST artifacts (have their own .gitignore in dast/)
+dast/node_modules/
+dast/results/
+dast/test-results/
+dast/playwright-report/
+dast/upgrade-packages/*.zip
+
+# YARA compiled rules
+yara_rules/*.yac
+
+# Logs
+*.log
+
+# Archives and temp
+archive/
+*.bak
+*.tmp

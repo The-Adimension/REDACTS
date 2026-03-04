@@ -1,0 +1,35 @@
+# ═══════════════════════════════════════════════════════════════
+# Google Security Crawl Maze — Containerised
+# ═══════════════════════════════════════════════════════════════
+# Builds a self-contained image of google/security-crawl-maze
+# for use as a DAST crawl-coverage benchmark alongside REDACTS.
+#
+# Source: https://github.com/google/security-crawl-maze
+# ═══════════════════════════════════════════════════════════════
+
+FROM node:18-slim AS angular-builder
+
+RUN apt-get update && apt-get install -y git python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# Clone Security Crawl Maze
+RUN git clone --depth 1 https://github.com/google/security-crawl-maze.git /app
+
+WORKDIR /app
+
+# Build Angular test cases (required for JS framework tests)
+RUN cd test-cases/javascript/frameworks/angular && \
+    npm install --legacy-peer-deps 2>/dev/null && \
+    npx ng build --configuration production 2>/dev/null || true
+
+# ── Runtime stage ────────────────────────────────────────────
+FROM python:3.11-slim
+
+COPY --from=angular-builder /app /app
+WORKDIR /app
+
+RUN pip install --no-cache-dir flask gunicorn
+
+EXPOSE 8080
+
+# Use gunicorn for production-grade serving
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "app:app"]

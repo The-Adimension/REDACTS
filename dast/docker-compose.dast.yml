@@ -1,0 +1,113 @@
+# ═══════════════════════════════════════════════════════════════════
+# REDACTS DAST — Dynamic Application Security Testing
+# ═══════════════════════════════════════════════════════════════════
+# Spins up a live REDCap instance + Playwright to simulate daily
+# internal operations and detect runtime security issues.
+#
+# Usage:
+#   cd REDACTS/dast
+#   docker compose -f docker-compose.dast.yml up --build --abort-on-container-exit
+#
+# The Playwright container runs headless Chromium against the
+# REDCap instance, exercising:
+#   1. Report save/export workflows
+#   2. Admin access / user rights management
+#   3. REDCap upgrade flow (version migration)
+#
+# Results are written to ./results/ as JSON + HTML reports.
+# ═══════════════════════════════════════════════════════════════════
+
+services:
+  # ── MariaDB for REDCap ──
+  redcap-dast-db:
+    image: mariadb:${DAST_MARIADB_VERSION:-10.11}
+    container_name: redacts-dast-db
+    restart: "no"
+    environment:
+      MARIADB_ROOT_PASSWORD: "${DAST_DB_ROOT_PASS:-D4stR00t!2026}"
+      MARIADB_DATABASE: redcap
+      MARIADB_USER: redcap
+      MARIADB_PASSWORD: "${DAST_DB_PASS:-D4st_s3cur3}"
+    tmpfs:
+      - /var/lib/mysql:size=512M
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    networks:
+      - dast_net
+
+  # ── REDCap Application (Apache + PHP 8.2) ──
+  # IMPORTANT: The 'mirror/Dockerfile' must exist relative to the build
+  # context (three directories up from dast/).  Because REDCap is
+  # proprietary, this Dockerfile is NOT shipped with REDACTS — you must
+  # create it yourself.  If the file is missing, `docker compose up
+  # --build` will fail with a clear Dockerfile-not-found error.
+  redcap-dast-app:
+    build:
+      context: ${DAST_BUILD_CONTEXT:-../../../}
+      dockerfile: ${DAST_DOCKERFILE:-mirror/Dockerfile}
+    container_name: redacts-dast-app
+    restart: "no"
+    depends_on:
+      redcap-dast-db:
+        condition: service_healthy
+    environment:
+      REDCAP_DB_HOST: redcap-dast-db
+      REDCAP_DB_PORT: "3306"
+      REDCAP_DB_NAME: redcap
+      REDCAP_DB_USER: redcap
+      REDCAP_DB_PASSWORD: "${DAST_DB_PASS:-D4st_s3cur3}"
+      REDCAP_SALT: "${DAST_SALT:-dastSalt2026xQz}"
+      # Xdebug trace for dynamic taint analysis
+      XDEBUG_MODE: "${XDEBUG_MODE:-trace}"
+      XDEBUG_CONFIG: "output_dir=/tmp/xdebug"
+    ports:
+      - "${DAST_PORT:-8585}:80"
+    volumes:
+      - dast_edocs:/var/www/html/redcap/edocs
+      - dast_temp:/var/www/html/redcap/temp
+      - ./results/xdebug:/tmp/xdebug
+      # Mount upgrade ZIP if testing upgrades
+      - ./upgrade-packages:/opt/upgrade-packages:ro
+    networks:
+      - dast_net
+
+  # ── Playwright Test Runner ──
+  playwright:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    container_name: redacts-dast-playwright
+    restart: "no"
+    depends_on:
+      redcap-dast-app:
+        condition: service_started
+    environment:
+      REDCAP_BASE_URL: "http://redcap-dast-app"
+      REDCAP_ADMIN_USER: "${DAST_ADMIN_USER:-admin}"
+      REDCAP_ADMIN_PASS: "${DAST_ADMIN_PASS:-password123}"
+      REDCAP_VERSION: "${REDCAP_VERSION:-}"
+      DAST_RESULTS_DIR: "/results"
+      # Filesystem snapshot dirs
+      REDCAP_WEBROOT: "/redcap-snapshot"
+    volumes:
+      - ./results:/results
+      - ./tests:/tests:ro
+      # Read-only snapshot of REDCap files for pre/post diff
+      - dast_edocs:/redcap-snapshot/edocs:ro
+      - dast_temp:/redcap-snapshot/temp:ro
+    networks:
+      - dast_net
+
+volumes:
+  dast_edocs:
+    driver: local
+  dast_temp:
+    driver: local
+
+networks:
+  dast_net:
+    driver: bridge

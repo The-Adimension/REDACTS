@@ -1,0 +1,8 @@
+# REDACTS — Development dependencies
+# Install: pip install -r requirements-dev.txt
+
+pytest>=9.0
+pytest-cov>=4.0
+black>=24.0
+ruff>=0.3.0
+mypy>=1.8

@@ -1,0 +1,14 @@
+# REDACTS — Python dependencies
+# Install: pip install -r requirements.txt
+
+chardet>=5.0.0
+magika>=0.6.0
+paramiko>=3.4.0
+requests>=2.31.0
+py7zr>=0.20.0
+rarfile>=4.1
+rich>=13.0.0
+pyyaml>=6.0
+tree-sitter>=0.23.0
+tree-sitter-php>=0.23.0
+semgrep>=1.0.0
