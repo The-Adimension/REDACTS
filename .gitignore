@@ -66,3 +66,9 @@ yara_rules/*.yac
 archive/
 *.bak
 *.tmp
+
+# Jules session artifacts (cherry-pick source — not committed)
+multi-edits/
+
+# Generated outputs
+repomix-output.txt
