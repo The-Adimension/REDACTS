@@ -9,11 +9,14 @@ layout.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
+import socket
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .external_tools import (
     DEFAULT_TOOL_TIMEOUT,
@@ -129,7 +132,35 @@ class YaraAdapter(ExternalToolAdapter):
             rule_file.write_text(text, encoding="utf-8")
             logger.info("Sanitized php-malware-finder rules (stripped whitelist references)")
 
+    @staticmethod
+    def _reject_ssrf_target(hostname: str) -> None:
+        """Block requests to internal, loopback, link-local, and cloud metadata IPs."""
+        if not hostname:
+            raise ValueError("Empty hostname in URL")
+
+        try:
+            # Resolve hostname to IP(s) and check each
+            for info in socket.getaddrinfo(hostname, None, socket.AF_UNSPEC):
+                addr = info[4][0]
+                ip = ipaddress.ip_address(addr)
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_multicast
+                    # AWS/GCP/Azure metadata endpoint
+                    or str(ip) == "169.254.169.254"
+                ):
+                    raise ValueError(
+                        f"SSRF blocked: {hostname} resolves to internal address {ip}"
+                    )
+        except socket.gaierror:
+            # DNS resolution failed — let requests handle the error naturally
+            pass
+
     def ensure_community_rules(self, *, force: bool = False) -> list[Path]:
+
         """Download community rules if not cached.  Returns paths to rule files."""
         available_rules: list[Path] = []
 
@@ -140,12 +171,22 @@ class YaraAdapter(ExternalToolAdapter):
                 continue
 
             try:
-                import urllib.request
+                import requests
                 logger.info(
                     "Fetching community YARA rules: %s (%s)",
                     spec["name"], spec["license"],
                 )
-                urllib.request.urlretrieve(spec["url"], rule_file)
+
+                # SSRF Protection
+                parsed = urlparse(spec["url"])
+                self._reject_ssrf_target(parsed.hostname or "")
+
+                with requests.get(spec["url"], stream=True, timeout=30) as r:
+                    r.raise_for_status()
+                    with open(rule_file, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+
                 if rule_file.is_file() and rule_file.stat().st_size > 0:
                     # Post-download sanitization for rules with unresolvable includes
                     if spec["name"] == "php-malware-finder":
