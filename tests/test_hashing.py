@@ -121,11 +121,12 @@ class TestPluginRegistry:
 
     def test_default_algorithms_registered(self) -> None:
         registered = get_registered_algorithms()
-        assert "md5" in registered
         assert "sha256" in registered
         assert "sha512" in registered
-        assert "sha1" in registered
         assert "blake2b" in registered
+        # Insecure algorithms should NOT be registered by default
+        assert "md5" not in registered
+        assert "sha1" not in registered
 
     def test_register_new_algorithm(self) -> None:
         name = "_test_algo_register"
@@ -177,7 +178,7 @@ class TestComputeHashes:
         self, sample_file: Path, known_digests: dict[str, str]
     ) -> None:
         result = compute_hashes(sample_file)
-        assert result["md5"] == known_digests["md5"]
+        assert "md5" not in result
         assert result["sha256"] == known_digests["sha256"]
         assert result["sha512"] == known_digests["sha512"]
 
@@ -191,11 +192,18 @@ class TestComputeHashes:
     def test_custom_algorithm_superset(
         self, sample_file: Path, known_digests: dict[str, str]
     ) -> None:
-        result = compute_hashes(
-            sample_file, algorithms=("md5", "sha256", "sha512", "sha1")
-        )
-        assert result["md5"] == known_digests["md5"]
-        assert result["sha1"] == known_digests["sha1"]
+        # Re-register md5/sha1 for this test
+        register_algorithm("md5", hashlib.md5)
+        register_algorithm("sha1", hashlib.sha1)
+        try:
+            result = compute_hashes(
+                sample_file, algorithms=("md5", "sha256", "sha512", "sha1")
+            )
+            assert result["md5"] == known_digests["md5"]
+            assert result["sha1"] == known_digests["sha1"]
+        finally:
+            _ALGORITHM_REGISTRY.pop("md5", None)
+            _ALGORITHM_REGISTRY.pop("sha1", None)
 
     def test_empty_file(self, empty_file: Path) -> None:
         result = compute_hashes(empty_file, algorithms=("sha256",))
@@ -241,9 +249,9 @@ class TestComputeHashes:
         self, sample_file: Path, known_digests: dict[str, str]
     ) -> None:
         """Ensure list[str] works (ManifestBuilder passes config as list)."""
-        result = compute_hashes(sample_file, algorithms=["sha256", "md5"])
+        result = compute_hashes(sample_file, algorithms=["sha256", "sha512"])
         assert result["sha256"] == known_digests["sha256"]
-        assert result["md5"] == known_digests["md5"]
+        assert result["sha512"] == known_digests["sha512"]
 
 
 # ---------------------------------------------------------------------------
@@ -261,10 +269,14 @@ class TestComputeSingleHash:
     def test_explicit_algorithm(
         self, sample_file: Path, known_digests: dict[str, str]
     ) -> None:
-        assert (
-            compute_single_hash(sample_file, algorithm="md5")
-            == known_digests["md5"]
-        )
+        register_algorithm("md5", hashlib.md5)
+        try:
+            assert (
+                compute_single_hash(sample_file, algorithm="md5")
+                == known_digests["md5"]
+            )
+        finally:
+            _ALGORITHM_REGISTRY.pop("md5", None)
 
     def test_suppress_errors_returns_empty(self, tmp_path: Path) -> None:
         """Matches Investigator._sha256 semantics: return '' on error."""
@@ -323,9 +335,13 @@ class TestHashTree:
         assert result == {}
 
     def test_custom_algorithm(self, sample_tree: Path) -> None:
-        result = hash_tree(sample_tree, algorithm="md5")
-        expected = hashlib.md5(b"file a\n").hexdigest()
-        assert result["a.txt"] == expected
+        register_algorithm("md5", hashlib.md5)
+        try:
+            result = hash_tree(sample_tree, algorithm="md5")
+            expected = hashlib.md5(b"file a\n").hexdigest()
+            assert result["a.txt"] == expected
+        finally:
+            _ALGORITHM_REGISTRY.pop("md5", None)
 
     def test_unreadable_file_logged_and_skipped(
         self, sample_tree: Path
@@ -356,11 +372,25 @@ class TestLegacyParity:
     """Confirm exact output parity with each legacy implementation."""
 
     def test_parity_with_file_analyzer(self, sample_file: Path) -> None:
-        """FileAnalyzer._compute_hashes returns dict with md5/sha256/sha512."""
-        # Legacy behavior: always all three, buffer 8192
+        """FileAnalyzer._compute_hashes returns dict with sha256/sha512."""
+        # Updated behavior: md5 removed from defaults
         legacy = self._legacy_file_analyzer_hash(sample_file)
-        canonical = compute_hashes(sample_file, algorithms=("md5", "sha256", "sha512"))
+        canonical = compute_hashes(sample_file, algorithms=("sha256", "sha512"))
         assert canonical == legacy
+
+    def test_insecure_algorithms_log_warnings(self, sample_file: Path) -> None:
+        """Verify that using md5/sha1 logs warnings."""
+        with patch("REDACTS.core.hashing.logger.warning") as mock_warn:
+            register_algorithm("md5", hashlib.md5)
+            try:
+                compute_hashes(sample_file, algorithms=("md5",))
+                # Should have warned twice: once on register, once on resolve
+                assert mock_warn.call_count >= 2
+                args = [call.args[0] for call in mock_warn.call_args_list]
+                assert any("Insecure hash algorithm '%s' registered" in msg for msg in args)
+                assert any("Use of insecure hash algorithm '%s' detected" in msg for msg in args)
+            finally:
+                _ALGORITHM_REGISTRY.pop("md5", None)
 
     def test_parity_with_investigator_sha256(self, sample_file: Path) -> None:
         """Investigator._sha256 returns str, '' on error, buffer 65536."""
@@ -386,16 +416,13 @@ class TestLegacyParity:
 
     @staticmethod
     def _legacy_file_analyzer_hash(file_path: Path) -> dict[str, str]:
-        md5 = hashlib.md5()
         sha256 = hashlib.sha256()
         sha512 = hashlib.sha512()
         with open(file_path, "rb") as f:
             while chunk := f.read(8192):
-                md5.update(chunk)
                 sha256.update(chunk)
                 sha512.update(chunk)
         return {
-            "md5": md5.hexdigest(),
             "sha256": sha256.hexdigest(),
             "sha512": sha512.hexdigest(),
         }
@@ -438,7 +465,7 @@ class TestConfigurationDefaults:
 
     def test_default_algorithms_match_config(self) -> None:
         """DEFAULT_ALGORITHMS must match AnalysisConfig.hash_algorithms default."""
-        assert set(DEFAULT_ALGORITHMS) == {"md5", "sha256", "sha512"}
+        assert set(DEFAULT_ALGORITHMS) == {"sha256", "sha512"}
 
     def test_default_buffer_size(self) -> None:
         """DEFAULT_BUFFER_SIZE must be 65536 (largest existing buffer)."""

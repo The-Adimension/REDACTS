@@ -225,9 +225,9 @@ class FileAnalyzer:
 
             # Hashes
             hashes = self._compute_hashes(file_path)
-            profile.md5 = hashes["md5"]
-            profile.sha256 = hashes["sha256"]
-            profile.sha512 = hashes["sha512"]
+            profile.md5 = hashes.get("md5", "")
+            profile.sha256 = hashes.get("sha256", "")
+            profile.sha512 = hashes.get("sha512", "")
 
             # Entropy
             profile.entropy = self._compute_entropy(file_path)
