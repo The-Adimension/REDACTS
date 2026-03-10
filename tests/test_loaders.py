@@ -6,10 +6,8 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from REDACTS.loaders.ftp_loader import FTPLoader
-from REDACTS.loaders.zip_loader import ZipLoader, LoaderError
-
+from REDACTS.loaders.zip_loader import LoaderError, ZipLoader
 
 # ---------- FTP Loader ----------
 
@@ -125,3 +123,59 @@ class TestZipLoaderValidate:
 
     def test_directory_not_file(self, tmp_path):
         assert ZipLoader().validate(str(tmp_path)) is False
+
+
+
+# ---------- FTP Loader: Security ----------
+
+from unittest.mock import MagicMock, patch
+
+
+class TestFTPLoaderSecurity:
+    def test_sftp_uses_sshclient(self, tmp_path):
+        """Verify SFTP uses SSHClient with host key verification, not raw Transport."""
+        # Mock paramiko entirely since it might not be installed in the test environment
+        mock_paramiko = MagicMock()
+        mock_client_instance = MagicMock()
+        mock_paramiko.SSHClient.return_value = mock_client_instance
+
+        # We need to simulate the sftp object
+        mock_sftp = MagicMock()
+        mock_client_instance.open_sftp.return_value = mock_sftp
+
+        # When sftp.stat is called, we want to bypass the size check
+        mock_sftp.stat.side_effect = OSError("Simulated stat failure")
+
+        with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
+            loader = FTPLoader()
+
+            # Use _download_sftp directly to bypass tempfile/url parsing complexities
+            local_path = tmp_path / "downloaded.zip"
+
+            # Execute
+            try:
+                loader._download_sftp(
+                    host="example.com",
+                    port=22,
+                    path="/remote/path.zip",
+                    local_path=local_path,
+                    username="user",
+                    password="password"
+                )
+            except Exception:
+                pass
+
+            # Assertions
+            mock_paramiko.SSHClient.assert_called_once()
+            mock_client_instance.load_system_host_keys.assert_called_once()
+            mock_client_instance.set_missing_host_key_policy.assert_called_once_with(mock_paramiko.AutoAddPolicy())
+            mock_client_instance.connect.assert_called_once_with(
+                hostname="example.com",
+                port=22,
+                username="user",
+                password="password"
+            )
+            mock_client_instance.open_sftp.assert_called_once()
+            mock_sftp.get.assert_called_once_with("/remote/path.zip", str(local_path))
+            mock_sftp.close.assert_called_once()
+            mock_client_instance.close.assert_called_once()

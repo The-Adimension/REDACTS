@@ -9,7 +9,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 from ..sandbox.isolation import InputSanitizer
@@ -46,8 +45,8 @@ class FTPLoader(BaseLoader):
         self,
         source: str,
         destination: Path,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        username: str | None = None,
+        password: str | None = None,
     ) -> Path:
         """
         Download file from FTP and extract.
@@ -101,7 +100,7 @@ class FTPLoader(BaseLoader):
             if zip_loader.can_handle(str(temp_file)):
                 return zip_loader.load(str(temp_file), destination)
             else:
-                raise LoaderError(f"Downloaded file is not a recognized archive")
+                raise LoaderError("Downloaded file is not a recognized archive")
 
         finally:
             if temp_file.exists():
@@ -146,26 +145,33 @@ class FTPLoader(BaseLoader):
             raise LoaderError("paramiko not installed. Run: pip install paramiko")
 
         try:
-            transport = paramiko.Transport((host, port or 22))
-            transport.connect(username=username, password=password)
-            sftp = paramiko.SFTPClient.from_transport(transport)
+            client = paramiko.SSHClient()
+            client.load_system_host_keys()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(
+                hostname=host,
+                port=port or 22,
+                username=username,
+                password=password
+            )
+            sftp = client.open_sftp()
 
             # Enforce download size limit (shared with HTTPLoader)
             try:
                 remote_stat = sftp.stat(path)
                 if remote_stat.st_size and remote_stat.st_size > MAX_DOWNLOAD_SIZE:
                     sftp.close()
-                    transport.close()
+                    client.close()
                     raise LoaderError(
                         f"Remote file too large: {remote_stat.st_size / 1_000_000:.0f}MB "
                         f"(max {MAX_DOWNLOAD_SIZE / 1_000_000:.0f}MB)"
                     )
-            except IOError:
+            except OSError:
                 pass  # stat failed — proceed without size check
 
             sftp.get(path, str(local_path))
             sftp.close()
-            transport.close()
+            client.close()
 
             logger.warning(
                 "SFTP host key was NOT verified for %s — MITM risk. "
