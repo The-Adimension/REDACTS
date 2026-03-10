@@ -10,8 +10,20 @@ Components:
     - trivy_adapter.py: Trivy vulnerability/secret scanning
 """
 
-from .investigator import Investigator, InvestigationReport, InvestigationFinding
-from .step_protocol import InvestigationStep, InvestigationContext, StepResult
-from .external_tools import ExternalToolRunner, ExternalToolsReport
+__all__ = [
+    "Investigator",
+    "InvestigationReport",
+    "InvestigationFinding",
+    "InvestigationStep",
+    "InvestigationContext",
+    "StepResult",
+    "ExternalToolRunner",
+    "SemgrepAdapter",
+    "TrivyAdapter",
+]
+
+from .external_tools import ExternalToolRunner
+from .investigator import InvestigationFinding, InvestigationReport, Investigator
 from .semgrep_adapter import SemgrepAdapter
+from .step_protocol import InvestigationContext, InvestigationStep, StepResult
 from .trivy_adapter import TrivyAdapter
