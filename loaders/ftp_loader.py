@@ -147,7 +147,7 @@ class FTPLoader(BaseLoader):
         try:
             client = paramiko.SSHClient()
             client.load_system_host_keys()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
             client.connect(
                 hostname=host,
                 port=port or 22,
@@ -155,29 +155,23 @@ class FTPLoader(BaseLoader):
                 password=password
             )
             sftp = client.open_sftp()
-
-            # Enforce download size limit (shared with HTTPLoader)
             try:
-                remote_stat = sftp.stat(path)
-                if remote_stat.st_size and remote_stat.st_size > MAX_DOWNLOAD_SIZE:
-                    sftp.close()
-                    client.close()
-                    raise LoaderError(
-                        f"Remote file too large: {remote_stat.st_size / 1_000_000:.0f}MB "
-                        f"(max {MAX_DOWNLOAD_SIZE / 1_000_000:.0f}MB)"
-                    )
-            except OSError:
-                pass  # stat failed — proceed without size check
+                # Enforce download size limit (shared with HTTPLoader)
+                try:
+                    remote_stat = sftp.stat(path)
+                    if remote_stat.st_size and remote_stat.st_size > MAX_DOWNLOAD_SIZE:
+                        raise LoaderError(
+                            f"Remote file too large: {remote_stat.st_size / 1_000_000:.0f}MB "
+                            f"(max {MAX_DOWNLOAD_SIZE / 1_000_000:.0f}MB)"
+                        )
+                except OSError:
+                    pass  # stat failed — proceed without size check
 
-            sftp.get(path, str(local_path))
-            sftp.close()
-            client.close()
+                sftp.get(path, str(local_path))
+            finally:
+                sftp.close()
+                client.close()
 
-            logger.warning(
-                "SFTP host key was NOT verified for %s — MITM risk. "
-                "Consider using known_hosts verification in production.",
-                host,
-            )
             logger.info(f"Downloaded {path} from {host} via SFTP")
         except LoaderError:
             raise

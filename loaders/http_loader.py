@@ -4,14 +4,13 @@ REDACTS HTTP Loader - Import REDCap from HTTP/HTTPS URLs.
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import os
-import socket
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
+from ..core.network_security import reject_ssrf_target
 from ..sandbox.isolation import InputSanitizer
 from .base import BaseLoader, LoaderError
 
@@ -126,27 +125,8 @@ class HTTPLoader(BaseLoader):
 
     @staticmethod
     def _reject_ssrf_target(hostname: str) -> None:
-        """Block requests to internal, loopback, link-local, and cloud metadata IPs."""
-        if not hostname:
-            raise LoaderError("Empty hostname in URL")
-
+        """Block requests to internal/reserved IPs (delegates to shared utility)."""
         try:
-            # Resolve hostname to IP(s) and check each
-            for info in socket.getaddrinfo(hostname, None, socket.AF_UNSPEC):
-                addr = info[4][0]
-                ip = ipaddress.ip_address(addr)
-                if (
-                    ip.is_private
-                    or ip.is_loopback
-                    or ip.is_link_local
-                    or ip.is_reserved
-                    or ip.is_multicast
-                    # AWS/GCP/Azure metadata endpoint
-                    or str(ip) == "169.254.169.254"
-                ):
-                    raise LoaderError(
-                        f"SSRF blocked: {hostname} resolves to internal address {ip}"
-                    )
-        except socket.gaierror:
-            # DNS resolution failed — let requests handle the error naturally
-            pass
+            reject_ssrf_target(hostname)
+        except ValueError as exc:
+            raise LoaderError(str(exc)) from exc

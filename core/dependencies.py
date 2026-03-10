@@ -355,18 +355,42 @@ _YARA_VERSION = "4.5.2"
 
 
 def _download_and_extract_zip(url: str, dest_dir: Path, label: str) -> bool:
-    """Download a ZIP from *url* and extract into *dest_dir*."""
+    """Download a ZIP from *url*, verify paths, and extract into *dest_dir*."""
+    import hashlib
+    import tempfile
+
     import requests
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     print(f"    Downloading {label}...")
     logger.info("Downloading %s from %s", label, url)
 
+    tmp_path: Path | None = None
     try:
-        resp = requests.get(url, timeout=120)
-        resp.raise_for_status()
-        data = resp.content
-        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        # Stream to a temp file instead of loading entire ZIP into memory
+        fd, tmp_name = tempfile.mkstemp(suffix=".zip", prefix="redacts_dep_")
+        tmp_path = Path(tmp_name)
+        sha256 = hashlib.sha256()
+        with requests.get(url, stream=True, timeout=120) as resp:
+            resp.raise_for_status()
+            with os.fdopen(fd, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    sha256.update(chunk)
+
+        logger.info(
+            "Downloaded %s — SHA-256: %s", label, sha256.hexdigest()
+        )
+
+        resolved_dest = dest_dir.resolve()
+        with zipfile.ZipFile(tmp_path) as zf:
+            # Zip Slip protection: reject entries that escape dest_dir
+            for member in zf.namelist():
+                member_path = (dest_dir / member).resolve()
+                if not str(member_path).startswith(str(resolved_dest)):
+                    raise zipfile.BadZipFile(
+                        f"Zip Slip detected: {member!r} escapes {dest_dir}"
+                    )
             zf.extractall(dest_dir)
         return True
     except requests.exceptions.RequestException as exc:
@@ -381,6 +405,9 @@ def _download_and_extract_zip(url: str, dest_dir: Path, label: str) -> bool:
         logger.error("Failed to download %s: %s", label, exc)
         print(f"    FAILED to download {label}: {exc}")
         return False
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
 
 
 def _install_trivy(dest_dir: Path) -> bool:

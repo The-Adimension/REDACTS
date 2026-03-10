@@ -9,15 +9,19 @@ layout.
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import os
-import socket
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from ..core.network_security import (
+    check_domain_allowlist,
+    enforce_https,
+    reject_ssrf_target,
+)
 from .external_tools import (
     DEFAULT_TOOL_TIMEOUT,
     ExternalToolAdapter,
@@ -134,30 +138,8 @@ class YaraAdapter(ExternalToolAdapter):
 
     @staticmethod
     def _reject_ssrf_target(hostname: str) -> None:
-        """Block requests to internal, loopback, link-local, and cloud metadata IPs."""
-        if not hostname:
-            raise ValueError("Empty hostname in URL")
-
-        try:
-            # Resolve hostname to IP(s) and check each
-            for info in socket.getaddrinfo(hostname, None, socket.AF_UNSPEC):
-                addr = info[4][0]
-                ip = ipaddress.ip_address(addr)
-                if (
-                    ip.is_private
-                    or ip.is_loopback
-                    or ip.is_link_local
-                    or ip.is_reserved
-                    or ip.is_multicast
-                    # AWS/GCP/Azure metadata endpoint
-                    or str(ip) == "169.254.169.254"
-                ):
-                    raise ValueError(
-                        f"SSRF blocked: {hostname} resolves to internal address {ip}"
-                    )
-        except socket.gaierror:
-            # DNS resolution failed — let requests handle the error naturally
-            pass
+        """Block requests to internal/reserved IPs (delegates to shared utility)."""
+        reject_ssrf_target(hostname)
 
     def ensure_community_rules(self, *, force: bool = False) -> list[Path]:
 
@@ -177,15 +159,33 @@ class YaraAdapter(ExternalToolAdapter):
                     spec["name"], spec["license"],
                 )
 
-                # SSRF Protection
+                # Security: HTTPS-only, domain allowlist, SSRF check
+                enforce_https(spec["url"])
                 parsed = urlparse(spec["url"])
-                self._reject_ssrf_target(parsed.hostname or "")
+                check_domain_allowlist(parsed.hostname or "")
+                reject_ssrf_target(parsed.hostname or "")
 
-                with requests.get(spec["url"], stream=True, timeout=30) as r:
-                    r.raise_for_status()
-                    with open(rule_file, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            f.write(chunk)
+                # Atomic download: write to temp, rename on success
+                fd, tmp_name = tempfile.mkstemp(
+                    suffix=".yar", dir=str(self._rules_dir)
+                )
+                tmp_path = Path(tmp_name)
+                try:
+                    os.close(fd)
+                    with requests.get(
+                        spec["url"],
+                        stream=True,
+                        timeout=30,
+                        allow_redirects=False,
+                    ) as r:
+                        r.raise_for_status()
+                        with open(tmp_path, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                    tmp_path.replace(rule_file)
+                except Exception:
+                    tmp_path.unlink(missing_ok=True)
+                    raise
 
                 if rule_file.is_file() and rule_file.stat().st_size > 0:
                     # Post-download sanitization for rules with unresolvable includes

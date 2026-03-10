@@ -247,4 +247,5 @@ def test_trivy_phase_exception(
         result = phase.execute(orchestrator_context)
 
     assert result.skipped is False
+    assert len(orchestrator_context.collection.findings) == 0
     assert "Trivy phase failed: unexpected error" in caplog.text

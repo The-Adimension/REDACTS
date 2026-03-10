@@ -70,7 +70,7 @@ def test_execute_skipped_when_disabled(phase, mock_context):
     assert len(mock_context.collection.findings) == 0
 
 
-@patch("REDACTS.orchestration.phases.legacy_scanner_phase.SecurityScanner")
+@patch("REDACTS.forensics.security_scanner.SecurityScanner")
 @patch("REDACTS.orchestration.phases.legacy_scanner_phase.normalize_security_finding")
 def test_execute_scan_directory(
     mock_normalize, mock_scanner_class, phase, mock_context
@@ -118,7 +118,7 @@ def test_execute_scan_directory(
     assert mock_context.collection.findings[0] == unified
 
 
-@patch("REDACTS.orchestration.phases.legacy_scanner_phase.SecurityScanner")
+@patch("REDACTS.forensics.security_scanner.SecurityScanner")
 def test_execute_scan_files_delta(mock_scanner_class, phase, mock_context):
     """Phase uses scan_files when only_files is provided (audit mode)."""
     # Setup mock scanner
@@ -140,7 +140,7 @@ def test_execute_scan_files_delta(mock_scanner_class, phase, mock_context):
     mock_scanner.scan_directory.assert_not_called()
 
 
-@patch("REDACTS.orchestration.phases.legacy_scanner_phase.SecurityScanner")
+@patch("REDACTS.forensics.security_scanner.SecurityScanner")
 def test_execute_exception_handling(mock_scanner_class, phase, mock_context, caplog):
     """Phase catches exceptions and returns safely."""
     # Scanner instantiation crashes

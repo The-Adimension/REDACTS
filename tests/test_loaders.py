@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import zipfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from REDACTS.loaders.ftp_loader import FTPLoader
@@ -128,8 +129,6 @@ class TestZipLoaderValidate:
 
 # ---------- FTP Loader: Security ----------
 
-from unittest.mock import MagicMock, patch
-
 
 class TestFTPLoaderSecurity:
     def test_sftp_uses_sshclient(self, tmp_path):
@@ -168,7 +167,7 @@ class TestFTPLoaderSecurity:
             # Assertions
             mock_paramiko.SSHClient.assert_called_once()
             mock_client_instance.load_system_host_keys.assert_called_once()
-            mock_client_instance.set_missing_host_key_policy.assert_called_once_with(mock_paramiko.AutoAddPolicy())
+            mock_client_instance.set_missing_host_key_policy.assert_called_once_with(mock_paramiko.RejectPolicy())
             mock_client_instance.connect.assert_called_once_with(
                 hostname="example.com",
                 port=22,

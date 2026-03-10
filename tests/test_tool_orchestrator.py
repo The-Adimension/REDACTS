@@ -130,7 +130,7 @@ def test_run_all_execution(tmp_path: Path) -> None:
 def test_run_all_phase_error(tmp_path: Path) -> None:
     """Test that a failing phase does not halt the entire pipeline."""
     p1 = MockPhase("p1")
-    p2 = MockPhase("p3")
+    p2 = MockPhase("p2")
 
     orchestrator = ToolOrchestrator(target_path=tmp_path, phases=[p1, ErrorPhase(), p2])
 

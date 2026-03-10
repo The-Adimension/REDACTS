@@ -18,11 +18,12 @@ __all__ = [
     "InvestigationContext",
     "StepResult",
     "ExternalToolRunner",
+    "ExternalToolsReport",
     "SemgrepAdapter",
     "TrivyAdapter",
 ]
 
-from .external_tools import ExternalToolRunner
+from .external_tools import ExternalToolRunner, ExternalToolsReport
 from .investigator import InvestigationFinding, InvestigationReport, Investigator
 from .semgrep_adapter import SemgrepAdapter
 from .step_protocol import InvestigationContext, InvestigationStep, StepResult
