@@ -50,9 +50,9 @@ class FileProfile:
     size_human: str = ""  # Human-readable size
 
     # Hashes
-    md5: str = ""
-    sha256: str = ""
-    sha512: str = ""
+    md5: Optional[str] = None
+    sha256: Optional[str] = None
+    sha512: Optional[str] = None
 
     # File metadata
     mime_type: str = ""
@@ -225,9 +225,9 @@ class FileAnalyzer:
 
             # Hashes
             hashes = self._compute_hashes(file_path)
-            profile.md5 = hashes.get("md5", "")
-            profile.sha256 = hashes.get("sha256", "")
-            profile.sha512 = hashes.get("sha512", "")
+            profile.md5 = hashes.get("md5")
+            profile.sha256 = hashes.get("sha256")
+            profile.sha512 = hashes.get("sha512")
 
             # Entropy
             profile.entropy = self._compute_entropy(file_path)

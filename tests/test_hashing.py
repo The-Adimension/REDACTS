@@ -192,18 +192,18 @@ class TestComputeHashes:
     def test_custom_algorithm_superset(
         self, sample_file: Path, known_digests: dict[str, str]
     ) -> None:
-        # Re-register md5/sha1 for this test
-        register_algorithm("md5", hashlib.md5)
-        register_algorithm("sha1", hashlib.sha1)
-        try:
+        # Temporarily register md5/sha1 for this test without permanently
+        # mutating the internal algorithm registry.
+        with patch.dict(
+            "REDACTS.core.hashing._ALGORITHM_REGISTRY",
+            {"md5": hashlib.md5, "sha1": hashlib.sha1},
+            clear=False,
+        ):
             result = compute_hashes(
                 sample_file, algorithms=("md5", "sha256", "sha512", "sha1")
             )
             assert result["md5"] == known_digests["md5"]
             assert result["sha1"] == known_digests["sha1"]
-        finally:
-            _ALGORITHM_REGISTRY.pop("md5", None)
-            _ALGORITHM_REGISTRY.pop("sha1", None)
 
     def test_empty_file(self, empty_file: Path) -> None:
         result = compute_hashes(empty_file, algorithms=("sha256",))
@@ -382,15 +382,17 @@ class TestLegacyParity:
         """Verify that using md5/sha1 logs warnings."""
         with patch("REDACTS.core.hashing.logger.warning") as mock_warn:
             register_algorithm("md5", hashlib.md5)
+            register_algorithm("sha1", hashlib.sha1)
             try:
-                compute_hashes(sample_file, algorithms=("md5",))
-                # Should have warned twice: once on register, once on resolve
-                assert mock_warn.call_count >= 2
+                compute_hashes(sample_file, algorithms=("md5", "sha1"))
+                # Should have warned at least twice per algorithm: once on register, once on resolve
+                assert mock_warn.call_count >= 4
                 args = [call.args[0] for call in mock_warn.call_args_list]
                 assert any("Insecure hash algorithm '%s' registered" in msg for msg in args)
                 assert any("Use of insecure hash algorithm '%s' detected" in msg for msg in args)
             finally:
                 _ALGORITHM_REGISTRY.pop("md5", None)
+                _ALGORITHM_REGISTRY.pop("sha1", None)
 
     def test_parity_with_investigator_sha256(self, sample_file: Path) -> None:
         """Investigator._sha256 returns str, '' on error, buffer 65536."""
