@@ -50,7 +50,7 @@ class AnalysisConfig:
     # File analysis
     max_file_size_mb: int = 50  # Skip files larger than this
     hash_algorithms: list[str] = field(
-        default_factory=lambda: ["md5", "sha256", "sha512"]
+        default_factory=lambda: ["sha256", "sha512"]
     )
     encoding_detection: bool = True
     binary_detection: bool = True
@@ -220,7 +220,7 @@ class EvidenceConfig:
 
     # Hashing
     hash_algorithms: list[str] = field(
-        default_factory=lambda: ["md5", "sha256", "sha512"]
+        default_factory=lambda: ["sha256", "sha512"]
     )
 
     # Manifest options

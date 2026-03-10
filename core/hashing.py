@@ -92,6 +92,15 @@ def register_algorithm(name: str, factory: AlgorithmFactory) -> None:
             f"Algorithm '{key}' is already registered. "
             "Use replace_algorithm() to override."
         )
+
+    if key in ("md5", "sha1"):
+        logger.warning(
+            "Insecure hash algorithm '%s' registered. "
+            "This algorithm is vulnerable to collisions and should not be "
+            "used for security-critical applications.",
+            key,
+        )
+
     _ALGORITHM_REGISTRY[key] = factory
 
 
@@ -115,6 +124,14 @@ def get_registered_algorithms() -> frozenset[str]:
 def _resolve_factory(name: str) -> AlgorithmFactory:
     """Look up *name* in the registry; raise :class:`KeyError` on miss."""
     key = name.strip().lower()
+
+    if key in ("md5", "sha1"):
+        logger.warning(
+            "Use of insecure hash algorithm '%s' detected. "
+            "Consider upgrading to SHA-256 or stronger.",
+            key,
+        )
+
     try:
         return _ALGORITHM_REGISTRY[key]
     except KeyError:
@@ -129,10 +146,8 @@ def _resolve_factory(name: str) -> AlgorithmFactory:
 # Register stdlib defaults
 # ---------------------------------------------------------------------------
 
-register_algorithm("md5", hashlib.md5)
 register_algorithm("sha256", hashlib.sha256)
 register_algorithm("sha512", hashlib.sha512)
-register_algorithm("sha1", hashlib.sha1)
 register_algorithm("sha384", hashlib.sha384)
 register_algorithm("sha3_256", hashlib.sha3_256)
 register_algorithm("sha3_512", hashlib.sha3_512)
@@ -150,7 +165,7 @@ DEFAULT_BUFFER_SIZE: int = 65_536
 
 #: Default algorithm set — matches ``AnalysisConfig.hash_algorithms`` and
 #: ``EvidenceConfig.hash_algorithms`` defaults.
-DEFAULT_ALGORITHMS: tuple[str, ...] = ("md5", "sha256", "sha512")
+DEFAULT_ALGORITHMS: tuple[str, ...] = ("sha256", "sha512")
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +191,7 @@ def compute_hashes(
         Filesystem path to the file to hash.
     algorithms:
         Sequence of algorithm names (looked up in the plugin registry).
-        Defaults to ``("md5", "sha256", "sha512")``.
+        Defaults to ``("sha256", "sha512")``.
     buffer_size:
         Read buffer in bytes.  Defaults to 65 536.
 
@@ -198,7 +213,7 @@ def compute_hashes(
     --------
     >>> hashes = compute_hashes(Path("README.md"))
     >>> sorted(hashes.keys())
-    ['md5', 'sha256', 'sha512']
+    ['sha256', 'sha512']
 
     >>> sha_only = compute_hashes(Path("data.bin"), algorithms=("sha256",))
     >>> list(sha_only.keys())

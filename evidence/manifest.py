@@ -168,7 +168,7 @@ class ManifestBuilder:
         magika: Any | None = None,
         anomaly_detector: AnomalyDetector | None = None,
     ):
-        self.hash_algorithms = hash_algorithms or ["md5", "sha256", "sha512"]
+        self.hash_algorithms = hash_algorithms or ["sha256", "sha512"]
         if magika is not None:
             self._magika = magika
         else:
