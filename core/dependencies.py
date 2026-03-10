@@ -356,18 +356,27 @@ _YARA_VERSION = "4.5.2"
 
 def _download_and_extract_zip(url: str, dest_dir: Path, label: str) -> bool:
     """Download a ZIP from *url* and extract into *dest_dir*."""
-    import urllib.request
+    import requests
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     print(f"    Downloading {label}...")
     logger.info("Downloading %s from %s", label, url)
 
     try:
-        with urllib.request.urlopen(url, timeout=120) as resp:
-            data = resp.read()
+        resp = requests.get(url, timeout=120)
+        resp.raise_for_status()
+        data = resp.content
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
             zf.extractall(dest_dir)
         return True
+    except requests.exceptions.RequestException as exc:
+        logger.error("Network error downloading %s: %s", label, exc)
+        print(f"    FAILED to download {label} (network error): {exc}")
+        return False
+    except zipfile.BadZipFile as exc:
+        logger.error("Invalid ZIP file downloaded for %s: %s", label, exc)
+        print(f"    FAILED to extract {label} (invalid ZIP): {exc}")
+        return False
     except Exception as exc:
         logger.error("Failed to download %s: %s", label, exc)
         print(f"    FAILED to download {label}: {exc}")
