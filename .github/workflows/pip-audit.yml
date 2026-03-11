@@ -1,0 +1,37 @@
+# ──────────────────────────────────────────────────────────────────────
+# Pip-Audit — Python dependency vulnerability scanner
+# Scans requirements.txt against the OSV database for known CVEs.
+# Uses PyPI Advisory Database + OSV.dev for comprehensive coverage.
+# ──────────────────────────────────────────────────────────────────────
+
+name: Pip-Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * 6"          # Saturday 03:00 UTC (weekly)
+
+permissions: {}                    # Reset all — least-privilege
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run pip-audit
+        uses: pypa/gh-action-pip-audit@ecbf276b5d286618e939b4f3a26cd27791e8a1dd  # v1.1.0
+        with:
+          inputs: requirements.txt
