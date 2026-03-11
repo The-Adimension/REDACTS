@@ -1,0 +1,50 @@
+# Semgrep — fast rule-based SAST scanner.
+#
+# Runs inside the official returntocorp/semgrep container to avoid
+# action-repo supply-chain risk.  Uses --config=auto which pulls the
+# community ruleset (security-focused Python, PHP, generic web).
+#
+# Results upload as SARIF to Security → Code scanning.
+#
+# Audit notes (2026-03-11):
+#   - Changed from `semgrep ci` (requires SEMGREP_APP_TOKEN) to
+#     `semgrep scan` which works token-free with the same rulesets.
+#   - Added `|| true` to the scan step because Semgrep exits 1 when
+#     findings are detected — without this the SARIF upload is skipped.
+#   - Container image (returntocorp/semgrep) eliminates JS action
+#     supply-chain risk — no third-party action repo needed.
+#   - Complements CodeQL: Semgrep is faster, pattern-based;
+#     CodeQL is deeper, dataflow-based.  Together they cover more.
+#   - Weekly Saturday 01:00 UTC schedule picks up new community rules.
+
+name: Semgrep
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 1 * * 6'    # Every Saturday at 01:00 UTC
+
+permissions: {}
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Semgrep scan
+        run: semgrep scan --config=auto --sarif -o semgrep.sarif || true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
