@@ -29,6 +29,7 @@ from ..knowledge import (
     IoCDatabase,
     SensitiveDataScanner,
 )
+from ..knowledge.cwe_database import CweDatabase
 from ..forensics.security_scanner import SecurityScanner
 from ..forensics.tree_sitter_analyzer import TreeSitterAnalyzer
 from .external_tools import ExternalToolRunner
@@ -42,6 +43,7 @@ from .step_protocol import (
 from .steps import (
     AttackVectorStep,
     ConfigIntegrityStep,
+    CweEnrichmentStep,
     ExternalToolsStep,
     IocScanStep,
     RiskCalculationStep,
@@ -170,8 +172,10 @@ class Investigator:
             ExternalToolsStep(external_runner=self.external_runner),
         ]
         #  Post-processing steps (operate on accumulated findings)
+        self._cwe_db = CweDatabase()
         self._post_steps: list = [
             AttackVectorStep(attack_db=self.attack_db),
+            CweEnrichmentStep(cwe_db=self._cwe_db),
             RiskCalculationStep(),
         ]
 

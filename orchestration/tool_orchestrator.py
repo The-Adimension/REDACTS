@@ -50,6 +50,7 @@ from ..core.models import (
     FindingCollection,
     SeverityLevel,
 )
+from ..knowledge.cwe_database import CweDatabase
 from .phase_protocol import OrchestratorContext
 from .phases import (
     CorrelatePhase,
@@ -255,6 +256,7 @@ class ToolOrchestrator:
             self._context.phase_timings[phase.name] = time.monotonic() - phase_start
 
         # Finalize
+        self._enrich_cwe()
         self._context.collection.scan_completed = datetime.now(timezone.utc).isoformat()
         total_elapsed = time.monotonic() - total_start
         self._context.phase_timings["total"] = total_elapsed
@@ -267,6 +269,43 @@ class ToolOrchestrator:
         )
 
         return self._context.collection
+
+    # ═══════════════════════════════════════════════════════════════════
+    # CWE enrichment
+    # ═══════════════════════════════════════════════════════════════════
+
+    def _enrich_cwe(self) -> None:
+        """Enrich UnifiedFinding instances with CWE names from the MITRE database.
+
+        Best-effort — if the CSV is missing (e.g., dev environment without
+        data files), logs a warning and skips.  Never fails silently on
+        integrity mismatch (CweDatabase raises ValueError in that case).
+        """
+        if not self._context.collection.findings:
+            return  # Nothing to enrich
+
+        try:
+            db = CweDatabase()
+        except ValueError:
+            raise  # Integrity mismatch — do NOT swallow
+        except Exception as exc:
+            logger.warning("CWE enrichment unavailable: %s", exc)
+            return
+
+        enriched = 0
+        for finding in self._context.collection.findings:
+            if finding.cwe_id and not finding.cwe_name:
+                name = db.get_name(finding.cwe_id)
+                if name:
+                    finding.cwe_name = name
+                    enriched += 1
+            if finding.cwe_id and not finding.recommendation:
+                rec = db.get_recommendation(finding.cwe_id)
+                if rec:
+                    finding.recommendation = rec
+
+        if enriched:
+            logger.info("CWE enrichment: %d finding names resolved", enriched)
 
     # ═══════════════════════════════════════════════════════════════════
     # Public query API

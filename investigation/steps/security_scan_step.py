@@ -69,10 +69,10 @@ class SecurityScanStep:
                     ),
                     category=sf.category,
                     recommendation=sf.recommendation,
+                    cwe_id=sf.cwe,
                     evidence={
                         "rule": sf.rule,
                         "snippet": sf.snippet[:200] if sf.snippet else "",
-                        "cwe": sf.cwe,
                     },
                 )
             )

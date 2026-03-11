@@ -40,6 +40,8 @@ class InvestigationFinding:
     conclusiveness: str  # "conclusive", "suspicious", "informational"
     category: str  # e.g., "persistence", "webshell", "credential_exposure"
     recommendation: str
+    cwe_id: str = ""
+    cwe_name: str = ""
     evidence: dict[str, Any] = field(default_factory=dict)
     related_ioc_ids: list[str] = field(default_factory=list)
     related_attack_vector_ids: list[str] = field(default_factory=list)

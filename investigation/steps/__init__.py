@@ -12,6 +12,7 @@ from .security_scan_step import SecurityScanStep
 from .sensitive_data_step import SensitiveDataStep
 from .external_tools_step import ExternalToolsStep
 from .attack_vector_step import AttackVectorStep
+from .cwe_enrichment_step import CweEnrichmentStep
 from .risk_calculation_step import RiskCalculationStep
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "SensitiveDataStep",
     "ExternalToolsStep",
     "AttackVectorStep",
+    "CweEnrichmentStep",
     "RiskCalculationStep",
 ]

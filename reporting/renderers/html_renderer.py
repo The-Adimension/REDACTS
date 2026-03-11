@@ -128,11 +128,15 @@ class HtmlReportRenderer:
         p("<table>")
         p(
             "<tr><th>ID</th><th>Severity</th><th>Title</th><th>File</th>"
-            "<th>Line</th><th>Conclusiveness</th><th>Category</th><th>Source</th></tr>"
+            "<th>Line</th><th>CWE</th><th>Conclusiveness</th><th>Category</th><th>Source</th></tr>"
         )
 
         for i, f in enumerate(findings):
             line_str = str(f.line) if f.line else "-"
+            cwe_display = ""
+            if getattr(f, "cwe_id", ""):
+                cwe_name = getattr(f, "cwe_name", "")
+                cwe_display = f"{_esc(f.cwe_id)}: {_esc(cwe_name)}" if cwe_name else _esc(f.cwe_id)
             p(
                 f"<tr><td>{_esc(f.id)}</td><td>"
                 f"{_severity_badge_html(f.severity)}"
@@ -141,6 +145,7 @@ class HtmlReportRenderer:
                 f"{_esc(f.title)}</td><td><code>"
                 f"{_esc(f.file_path)}</code></td><td>"
                 f"{line_str}</td><td>"
+                f"{cwe_display}</td><td>"
                 f"{_esc(f.conclusiveness)}</td><td>"
                 f"{_esc(f.category)}</td><td>"
                 f"{_esc(f.source)}</td></tr>"
@@ -153,7 +158,7 @@ class HtmlReportRenderer:
 
             p(
                 f"<tr id='fd-{i}' class='detail-row' style='display:none;'>"
-                f"<td colspan='8'><strong>Description:</strong> "
+                f"<td colspan='9'><strong>Description:</strong> "
                 f"{desc}"
                 f"<br><strong>Recommendation:</strong> "
                 f"{rec}<br>"
@@ -347,6 +352,11 @@ class HtmlReportRenderer:
         p(
             "<p><em>\u00a9 2024\u20132026 The Adimension / Shehab Anwer "
             "\u2014 atrium@theadimension.com</em></p>"
+        )
+        p(
+            "<p><em>CWE\u2122 content \u00a9 2006\u20132026 The MITRE Corporation. "
+            "Used under the CWE Terms of Use "
+            "(https://cwe.mitre.org/about/termsofuse.html).</em></p>"
         )
 
     @staticmethod

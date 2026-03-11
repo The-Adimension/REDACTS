@@ -17,6 +17,7 @@ from .ioc_database import (
     HOOK_FUNCTION_NAMES,
 )
 from .attack_vectors import AttackVector, AttackVectorDatabase
+from .cwe_database import CweDatabase, CweEntry, CWE_ATTRIBUTION
 from .mitre_mapping import MITRE_ATTACK_MAP, CVSS_MAP, CWE_MAP
 from .sensitive_data import (
     SensitiveDataFinding,

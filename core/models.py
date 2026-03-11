@@ -190,6 +190,7 @@ class UnifiedFinding:
 
     # ── Standards Mapping ─────────────────────────────────────────────────
     cwe_id: str = ""  # "CWE-89", "CWE-94", etc.
+    cwe_name: str = ""  # "Improper Neutralization of Special Elements ..."
     mitre_attack_id: str = ""  # "T1505.003", "T1059.004", etc.
     mitre_attack_name: str = ""  # "Web Shell", "Unix Shell", etc.
     cvss: Optional[CvssVector] = None  # CVSS 3.1 vector + score
@@ -297,12 +298,13 @@ class UnifiedFinding:
         # Standards mapping in properties
         if self.cwe_id:
             result["properties"]["cwe"] = self.cwe_id
-            result["taxa"] = [
-                {
-                    "toolComponent": {"name": "CWE"},
-                    "id": self.cwe_id.replace("CWE-", ""),
-                }
-            ]
+            taxa_entry: dict[str, Any] = {
+                "toolComponent": {"name": "CWE"},
+                "id": self.cwe_id.replace("CWE-", ""),
+            }
+            if self.cwe_name:
+                taxa_entry["name"] = self.cwe_name
+            result["taxa"] = [taxa_entry]
         if self.mitre_attack_id:
             result["properties"]["mitre_attack"] = {
                 "technique_id": self.mitre_attack_id,
