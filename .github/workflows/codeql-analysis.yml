@@ -1,0 +1,58 @@
+# CodeQL — GitHub's official semantic SAST engine.
+#
+# Performs deep dataflow analysis on Python source code to detect
+# injection, path traversal, SSRF, and other vulnerability classes
+# that pattern-based scanners miss.
+#
+# Results appear in the Security → Code scanning tab.
+#
+# Audit notes (2026-03-11):
+#   - actions/checkout@v4 and github/codeql-action@v3 are GitHub first-party
+#     actions; mutable tags are acceptable per GitHub's own guidance.
+#   - Python is an interpreted language — Autobuild is effectively a no-op
+#     but is kept for forward-compatibility if compiled extensions are added.
+#   - Minimal permissions: only security-events:write to upload SARIF.
+#   - Weekly schedule catches new CodeQL query-pack rules between pushes.
+
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * 0'   # Every Sunday at midnight UTC
+
+permissions: {}            # Reset all, then grant only what's needed
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'python' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
