@@ -1,0 +1,77 @@
+# ORT (OSS Review Toolkit) — dependency analysis, license compliance, and SBOM generation.
+#
+# Runs the full ORT pipeline:
+#   1. Analyzer   — builds the dependency graph for all Python (pip/PyPI) packages
+#   2. Advisor    — queries OSV for known CVEs/vulnerabilities in those packages
+#   3. Reporter   — generates CycloneDX (JSON + XML), SPDX (JSON + YAML), and
+#                   an interactive WebApp report
+#   4. Upload     — stores all ORT results as GitHub Actions workflow artifacts
+#
+# ORT complements pip-audit (which also uses OSV) by additionally producing
+# standard SBOM formats consumed by downstream supply-chain tooling, and by
+# running the full policy-evaluation pipeline via its Evaluator.
+#
+# Audit notes (2026-03-11):
+#   - ort-ci-github-action is pinned to a specific commit SHA (no stable
+#     releases published); comment shows branch it was taken from.
+#   - allow-dynamic-versions: 'true' is required because requirements.txt
+#     does not use a lock-file and several entries lack pinned versions.
+#   - The 'evaluator' step is intentionally omitted (requires a custom
+#     policy rules file in an ort-config repo).  Re-add once policy rules
+#     are authored.
+#   - fail-on is left empty so findings are informational; upgrade to
+#     'issues' or 'violations' once a baseline is established.
+#   - results are uploaded twice: once by ORT's own upload-results step
+#     (standard ORT artifact naming) and once by actions/upload-artifact
+#     for easy download from the workflow summary page.
+#   - Sunday 01:00 UTC schedule avoids overlap with other weekly scans.
+
+name: ORT
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: "0 1 * * 0"    # Every Sunday at 01:00 UTC
+
+permissions: {}             # Reset all — least-privilege baseline
+
+jobs:
+  ort:
+    name: Analyze, advise and generate SBOMs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Use HTTPS instead of SSH for Git cloning
+        run: git config --global url.https://github.com/.insteadOf ssh://git@github.com/
+
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Run ORT
+        uses: oss-review-toolkit/ort-ci-github-action@62e59b4b372de061b0347660971ec35bb013e1d5  # main
+        with:
+          allow-dynamic-versions: 'true'
+          advisors: 'OSV'
+          fail-on: ''
+          report-formats: 'CycloneDx,SpdxDocument,WebApp'
+          ort-cli-args: '-P ort.forceOverwrite=true --stacktrace'
+          run: >
+            cache-dependencies,
+            analyzer,
+            advisor,
+            reporter,
+            upload-results
+
+      - name: Upload ORT results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: ort-results
+          path: ~/.ort/ort-results/
+          if-no-files-found: warn
