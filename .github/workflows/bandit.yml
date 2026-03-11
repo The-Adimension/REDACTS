@@ -1,0 +1,64 @@
+# Bandit — Python-specific security linter (PyCQA official).
+#
+# Catches Python anti-patterns: eval(), exec(), subprocess with shell=True,
+# hardcoded passwords, weak crypto, assert in production code, etc.
+#
+# Audit notes (2026-03-11):
+#   - Added SARIF output + upload so findings appear in Security → Code
+#     scanning alongside CodeQL and Semgrep results.
+#   - Added schedule trigger (weekly) for parity with other workflows.
+#   - Excluded archive/ (legacy code not part of the active project) and
+#     tests/ (test code intentionally uses patterns Bandit would flag).
+#   - Kept JSON artifact upload as a secondary output for offline review.
+#   - bandit[sarif] extra installs the SARIF formatter.
+#   - `|| true` on both runs prevents findings from blocking uploads.
+#   - Value: catches Python-specific issues that CodeQL/Semgrep may miss
+#     (e.g., B108 hardcoded tmp, B324 hashlib.md5, B605 start_process).
+
+name: Bandit
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 2 * * 6'    # Every Saturday at 02:00 UTC
+
+permissions: {}
+
+jobs:
+  bandit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Bandit
+        run: pip install "bandit[sarif]"
+
+      - name: Run Bandit (SARIF)
+        run: bandit -r . --exclude ./archive,./tests -f sarif -o bandit.sarif || true
+
+      - name: Run Bandit (JSON artifact)
+        run: bandit -r . --exclude ./archive,./tests -f json -o bandit-report.json || true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
