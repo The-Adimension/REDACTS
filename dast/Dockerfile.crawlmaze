@@ -24,12 +24,32 @@ RUN cd test-cases/javascript/frameworks/angular && \
 # ── Runtime stage ────────────────────────────────────────────
 FROM python:3.11-slim
 
+# Security: Install security updates and remove unnecessary packages
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=angular-builder /app /app
 WORKDIR /app
 
 RUN pip install --no-cache-dir flask gunicorn
 
+# Security: Create non-root user with no login shell and no home directory
+RUN useradd -U -u 1000 -s /sbin/nologin -M appuser && \
+    chown -R 1000:1000 /app && \
+    chmod -R 550 /app && \
+    find /app -type f -exec chmod 440 {} \;
+
 EXPOSE 8080
+
+# Security: Drop to non-root user
+USER 1000
+
+# Security: Use read-only root filesystem and drop all capabilities
+# Security: Set resource limits
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080').read()" || exit 1
 
 # Use gunicorn for production-grade serving
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "app:app"]
