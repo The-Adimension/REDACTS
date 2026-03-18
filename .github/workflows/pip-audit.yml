@@ -32,6 +32,6 @@ jobs:
           python-version: "3.12"
 
       - name: Run pip-audit
-        uses: pypa/gh-action-pip-audit@ecbf276b5d286618e939b4f3a26cd27791e8a1dd  # v1.1.0
+        uses: pypa/gh-action-pip-audit@c07f2f2573c830d6ae828ebcc08c01de20e4f4dd  # v1.1.0
         with:
           inputs: requirements.txt
