@@ -1,0 +1,66 @@
+{
+  "$schema": "dast_environments.schema.json",
+  "_comment": "REDACTS DAST Internal Manifest - Maps REDCap LTS versions to pinned Docker image digests (linux/amd64). Digests verified from Docker Hub API on 2025-03-14.",
+  "version": "1.0.0",
+  "environments": {
+    "php": {
+      "8.1": {
+        "image": "php:8.1-apache",
+        "digest": "sha256:8277f9063e65c061456beef9d8fd5376bc4f59e75c2039d2ab4149006871f8a8",
+        "eol": "2025-12-31",
+        "notes": "PHP 8.1 - REDCap LTS 13.x, 14.x"
+      },
+      "8.2": {
+        "image": "php:8.2-apache",
+        "digest": "sha256:188c05cf6090add7910f33fcc7d47259ce442c698cfe9ae2818918ee6e0f8e99",
+        "eol": "2026-12-31",
+        "notes": "PHP 8.2 - REDCap LTS 14.x, 15.x"
+      },
+      "8.3": {
+        "image": "php:8.3-apache",
+        "digest": "sha256:6c8fd4ecc59d5950798f064d19a2e9eb0077fcd39a40819e5daeba9f06661122",
+        "eol": "2027-12-31",
+        "notes": "PHP 8.3 - REDCap LTS 15.x, 16.x"
+      }
+    },
+    "database": {
+      "mariadb-10.6": {
+        "image": "mariadb:10.6",
+        "digest": "sha256:e6e1cee4e1a0dafd8ff82983da8c1f5a24553bf9293fea184fafea09b249994e",
+        "eol": "2026-07-01",
+        "notes": "MariaDB 10.6 LTS - most common REDCap deployment"
+      },
+      "mariadb-10.11": {
+        "image": "mariadb:10.11",
+        "digest": "sha256:4d54b976cde4c382d92278ef7998a4ddb1393846e97fb4d8efc5c21fe6cb8bb9",
+        "eol": "2028-02-01",
+        "notes": "MariaDB 10.11 LTS - recommended for new deployments"
+      },
+      "mysql-8.0": {
+        "image": "mysql:8.0",
+        "digest": "sha256:e778ad05466b7b12d6cbd13467271eb5ddad447bb676f79f9d1ab56572bb3428",
+        "eol": "2026-04-01",
+        "notes": "MySQL 8.0 - alternative to MariaDB"
+      }
+    }
+  },
+  "redcap_version_matrix": {
+    "_comment": "Maps REDCap major versions to recommended PHP + DB combinations",
+    "13.x": {
+      "php": ["8.1"],
+      "database": ["mariadb-10.6", "mysql-8.0"]
+    },
+    "14.x": {
+      "php": ["8.1", "8.2"],
+      "database": ["mariadb-10.6", "mariadb-10.11", "mysql-8.0"]
+    },
+    "15.x": {
+      "php": ["8.2", "8.3"],
+      "database": ["mariadb-10.11", "mysql-8.0"]
+    },
+    "16.x": {
+      "php": ["8.3"],
+      "database": ["mariadb-10.11"]
+    }
+  }
+}

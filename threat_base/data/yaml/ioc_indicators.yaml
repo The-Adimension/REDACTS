@@ -1,0 +1,353 @@
+# REDACTS IoC Indicators - Externalized from knowledge/ioc_database.py
+# 17 Indicators of Compromise + auxiliary detection structures.
+#
+# Covers: INFINITERED campaign, configuration persistence, file presence,
+#         supply chain, content-type masquerading, webshell signatures,
+#         .htaccess/.user.ini dangerous directives.
+#
+# Version: 1.0.0
+
+---
+version: "1.0.0"
+schema: "ioc_indicators/v1"
+
+# IoC Definitions (17 indicators)
+
+iocs:
+ # INFINITERED Campaign
+
+  - id: IOC-INF-001
+    name: "INFINITERED redcap.db file"
+    description: "SQLite database planted in REDCap directories as C2/persistence layer"
+    category: infinitered
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: file_exists
+    pattern: "**/redcap.db"
+    filesystem_artifact: "redcap.db or redcap_.db files in any directory"
+    recommendation: "Isolate immediately. Inspect SQLite contents for exfiltrated data."
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
+
+  - id: IOC-INF-002
+    name: "INFINITERED SQLite WAL/journal"
+    description: "SQLite write-ahead log or journal sidecar - proves active database writes"
+    category: infinitered
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: file_exists
+    pattern: "**/*-wal|**/*-journal|**/*-shm"
+    filesystem_artifact: "redcap.db-wal, redcap.db-journal, redcap.db-shm files"
+    recommendation: "Sidecar files prove ACTIVE writes, not just a dropped file. Prioritize incident response."
+
+  - id: IOC-INF-003
+    name: "INFINITERED hook injection"
+    description: "Injected functions in hook_functions.php that don't match known REDCap hook names"
+    category: infinitered
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: function_enum
+    filesystem_artifact: "Functions in hook_functions.php not in HOOK_FUNCTION_NAMES"
+    recommendation: "Compare function names against HOOK_FUNCTION_NAMES whitelist."
+
+  - id: IOC-INF-004
+    name: "INFINITERED eval chain"
+    description: "eval(gzinflate(base64_decode())) payload delivery pattern"
+    category: infinitered
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: regex
+    pattern: 'eval\s*\(\s*(?:gzinflate|gzuncompress)\s*\(\s*base64_decode'
+    pattern_flags: IGNORECASE
+    recommendation: "Known INFINITERED payload delivery. Isolate and analyze."
+
+ # Configuration Persistence
+
+  - id: IOC-CFG-001
+    name: "database.php poisoning"
+    description: "Extra executable code beyond the 5 standard variables in database.php"
+    category: config_tamper
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: structure_validation
+    filesystem_artifact: "database.php containing functions, classes, includes, or eval"
+    recommendation: "database.php must contain ONLY $hostname, $db, $username, $password, $salt."
+
+  - id: IOC-CFG-002
+    name: ".user.ini auto_prepend_file"
+    description: "PHP .user.ini with auto_prepend_file - invisible persistent backdoor"
+    category: persistence
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: file_content
+    pattern: 'auto_prepend_file\s*='
+    pattern_flags: IGNORECASE
+    filesystem_artifact: ".user.ini files in any REDCap directory"
+    recommendation: "REDCap ships NO .user.ini files. Any instance is anomalous."
+
+  - id: IOC-CFG-003
+    name: ".htaccess auto_prepend/append_file"
+    description: ".htaccess with php_value auto_prepend_file or auto_append_file"
+    category: persistence
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: file_content
+    pattern: 'php_value\s+auto_(?:prepend|append)_file'
+    pattern_flags: IGNORECASE
+    recommendation: "Persistent invisible execution on every request. Immediate incident response."
+
+ # File Presence
+
+  - id: IOC-FP-001
+    name: "PHP in upload directory"
+    description: "PHP files in edocs/uploads/temp - webshell delivery via upload"
+    category: webshell
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: file_location
+    filesystem_artifact: ".php, .phtml, .phar files in edocs/, uploads/, temp/"
+    recommendation: "PHP files must NEVER exist in upload directories."
+
+  - id: IOC-FP-002
+    name: "Polyglot file"
+    description: "Image file containing embedded PHP code - bypasses extension filters"
+    category: webshell
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: content_check
+    filesystem_artifact: ".jpg/.png/.gif files containing <?php tags"
+    recommendation: "Definitively malicious. Remove and investigate upload mechanism."
+
+  - id: IOC-FP-003
+    name: ".git directory in webroot"
+    description: "Git repository metadata exposed in webroot"
+    category: file_presence
+    conclusiveness: conclusive
+    severity: HIGH
+    detection_method: directory_exists
+    pattern: "**/.git"
+    filesystem_artifact: ".git/ directory in webroot"
+    recommendation: "Source code, credentials, and history exposed. Remove .git/ and block via server config."
+
+  - id: IOC-FP-004
+    name: "Certificate/key in webroot"
+    description: "TLS certificates or private keys stored in web-accessible directory"
+    category: credential
+    conclusiveness: suspicious
+    severity: HIGH
+    detection_method: file_exists
+    pattern: "**/*.{pem,crt,key,p12,pfx}"
+    filesystem_artifact: ".pem, .crt, .key files in webroot"
+    recommendation: "Private keys must never be in webroot. Rotate compromised keys."
+
+ # Supply Chain
+
+  - id: IOC-SC-001
+    name: "Composer autoload tampering"
+    description: "Modified vendor/autoload.php - executes on every request"
+    category: supply_chain
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: hash_compare
+    filesystem_artifact: "vendor/autoload.php with manual modifications"
+    recommendation: "Regenerate vendor/ with composer install from clean composer.lock."
+
+  - id: IOC-SC-002
+    name: "External Module framework tampering"
+    description: "Modified files in ExternalModules/classes/ - affects all EM execution"
+    category: supply_chain
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: hash_compare
+    filesystem_artifact: "Modified AbstractExternalModule.php, Framework.php, etc."
+    recommendation: "EM framework must exactly match its official release."
+
+ # Content-Type Masquerading (Magika-detected)
+
+  - id: IOC-CT-001
+    name: "PHP content in non-PHP extension"
+    description: >-
+      File extension does not indicate PHP but AI content-type analysis (Magika)
+      identifies the content as PHP source. This is a hallmark of file-type
+      masquerading used to evade extension-based scanners and upload filters.
+    category: webshell
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: magika_content_type
+    filesystem_artifact: "Any non-.php file whose content is PHP (e.g. .jpg, .css, .txt)"
+    recommendation: >-
+      CONCLUSIVE webshell delivery via file-type masquerading.
+      Remove, quarantine, and trace upload origin.
+    cwe: CWE-434
+
+  - id: IOC-CT-002
+    name: "SQLite content in non-database extension"
+    description: >-
+      File does not have a .db/.sqlite extension but AI content-type analysis
+      identifies it as SQLite. INFINITERED drops credential-harvesting SQLite
+      databases under camouflaged names to survive manual cleanup.
+    category: infinitered
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: magika_content_type
+    filesystem_artifact: "Any non-.db file whose content is SQLite (e.g. .tmp, .dat, .log)"
+    recommendation: >-
+      CONCLUSIVE data exfiltration indicator. Inspect SQLite contents for
+      harvested credentials or PHI. REDCap uses MySQL exclusively - SQLite is anomalous.
+
+  - id: IOC-CT-003
+    name: "Content-type masquerading (generic)"
+    description: >-
+      AI content-type analysis detected that a file's actual content does not
+      match its extension. While not all mismatches are malicious, active content
+      (scripts, executables) hidden behind passive extensions (images, text, data)
+      is a strong persistence/evasion indicator.
+    category: file_content
+    conclusiveness: suspicious
+    severity: HIGH
+    detection_method: magika_content_type
+    filesystem_artifact: "Files where extension-implied type != AI-detected type"
+    recommendation: >-
+      Review mismatched files individually. Prioritise files where active content
+      hides behind passive extensions.
+
+  - id: IOC-CT-004
+    name: "Polyglot file (AI-detected)"
+    description: >-
+      Magika's deep-learning model detects content that is structurally different
+      from what the extension implies, beyond what shallow byte-sniffing can catch.
+      Polyglot files can bypass both extension filters AND simple magic-byte checks
+      simultaneously.
+    category: webshell
+    conclusiveness: suspicious
+    severity: HIGH
+    detection_method: magika_content_type
+    filesystem_artifact: "Image or data files identified by AI as containing executable code"
+    recommendation: >-
+      Traditional polyglot detection (checking first 8 KB for <?php) misses
+      advanced payloads. AI-based detection is more reliable. Inspect and quarantine.
+    cwe: CWE-434
+
+# Webshell Signatures (10 signatures)
+
+webshell_signatures:
+  - name: "Generic eval webshell"
+    pattern: '\beval\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)'
+    severity: CRITICAL
+    conclusiveness: conclusive
+
+  - name: "System command webshell"
+    pattern: '\b(?:system|exec|passthru|shell_exec)\s*\(\s*\$_(GET|POST|REQUEST)'
+    severity: CRITICAL
+    conclusiveness: conclusive
+
+  - name: "Base64 eval chain"
+    pattern: '\beval\s*\(\s*(?:base64_decode|gzinflate|gzuncompress|str_rot13)\s*\('
+    severity: CRITICAL
+    conclusiveness: conclusive
+
+  - name: "Variable function call"
+    pattern: '\$\w+\s*\(\s*\$_(GET|POST|REQUEST)'
+    severity: HIGH
+    conclusiveness: suspicious
+
+  - name: "Assert backdoor"
+    pattern: '\bassert\s*\(\s*\$_(GET|POST|REQUEST|COOKIE)'
+    severity: CRITICAL
+    conclusiveness: conclusive
+
+  - name: "preg_replace /e backdoor"
+    pattern: 'preg_replace\s*\(\s*[''"][^''"]*\/e[''"]'
+    severity: CRITICAL
+    conclusiveness: conclusive
+
+  - name: "create_function backdoor"
+    pattern: '\bcreate_function\s*\(\s*[''"].*?[''"]\s*,\s*\$'
+    severity: CRITICAL
+    conclusiveness: conclusive
+
+  - name: "File write webshell"
+    pattern: 'file_put_contents\s*\(.*\$_(GET|POST|REQUEST)'
+    severity: CRITICAL
+    conclusiveness: conclusive
+
+  - name: "Socket reverse shell"
+    pattern: '(?:fsockopen|stream_socket_client)\s*\(\s*\$'
+    severity: CRITICAL
+    conclusiveness: suspicious
+
+  - name: "PHP backdoor with __halt_compiler"
+    pattern: '__halt_compiler\s*\(\s*\)'
+    severity: HIGH
+    conclusiveness: suspicious
+
+# .htaccess Dangerous Directives (7 directives)
+
+htaccess_dangerous_directives:
+  - pattern: 'php_value\s+auto_prepend_file'
+    severity: CRITICAL
+    message: "auto_prepend_file directive - persistent code execution on every request"
+    conclusiveness: conclusive
+
+  - pattern: 'php_value\s+auto_append_file'
+    severity: CRITICAL
+    message: "auto_append_file directive - persistent code execution after every request"
+    conclusiveness: conclusive
+
+  - pattern: 'AddHandler\s+.*php'
+    severity: HIGH
+    message: "AddHandler enabling PHP execution - may allow PHP in upload directories"
+    conclusiveness: suspicious
+
+  - pattern: 'SetHandler\s+.*php'
+    severity: HIGH
+    message: "SetHandler enabling PHP execution"
+    conclusiveness: suspicious
+
+  - pattern: 'php_flag\s+engine\s+on'
+    severity: HIGH
+    message: "PHP engine explicitly enabled - dangerous in upload directories"
+    conclusiveness: suspicious
+
+  - pattern: 'RewriteRule\s+.*https?://'
+    severity: MEDIUM
+    message: "RewriteRule redirecting to external URL - potential C2 or phishing"
+    conclusiveness: suspicious
+
+  - pattern: 'ProxyPass\s+'
+    severity: MEDIUM
+    message: "ProxyPass directive - potential reverse proxy to C2"
+    conclusiveness: suspicious
+
+# .user.ini Dangerous Directives (6 directives)
+
+user_ini_dangerous_directives:
+  - pattern: 'auto_prepend_file\s*='
+    severity: CRITICAL
+    message: "auto_prepend_file in .user.ini - persistent invisible backdoor"
+    conclusiveness: conclusive
+
+  - pattern: 'auto_append_file\s*='
+    severity: CRITICAL
+    message: "auto_append_file in .user.ini - persistent invisible backdoor"
+    conclusiveness: conclusive
+
+  - pattern: 'include_path\s*='
+    severity: HIGH
+    message: "include_path override - potential include path hijacking"
+    conclusiveness: suspicious
+
+  - pattern: 'open_basedir\s*='
+    severity: HIGH
+    message: "open_basedir override - weakening security restrictions"
+    conclusiveness: suspicious
+
+  - pattern: 'disable_functions\s*='
+    severity: HIGH
+    message: "disable_functions override - potentially removing function restrictions"
+    conclusiveness: suspicious
+
+  - pattern: 'allow_url_include\s*='
+    severity: CRITICAL
+    message: "allow_url_include enabled - remote file inclusion possible"
+    conclusiveness: conclusive

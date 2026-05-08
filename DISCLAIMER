@@ -1,0 +1,22 @@
+DISCLAIMER
+
+REDACTS (REDCap Arbitrary Code Threat Scan) is an independent
+security auditing tool. It is NOT affiliated with, endorsed by, or
+supported by Vanderbilt University, the REDCap Consortium, or any
+REDCap hosting organisation.
+
+This software is provided for legitimate security assessment purposes
+only. Users are solely responsible for ensuring they have proper
+authorisation before scanning any REDCap instance. Unauthorised
+scanning of systems you do not own or have explicit permission to test
+may violate applicable laws and regulations.
+
+REDACTS does not exploit vulnerabilities. It identifies potential
+security issues, misconfigurations, and compliance gaps through
+non-destructive analysis of installation packages and runtime
+behaviour.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE
+USE OF THIS SOFTWARE.

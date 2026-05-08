@@ -1,0 +1,858 @@
+[
+    {
+        "category": "SOAR Platforms",
+        "product": "Palo Alto Cortex XSOAR",
+        "vendor": "Palo Alto Networks",
+        "capabilities": [
+            "enrichment",
+            "incident_response",
+            "livehunt_feeds",
+            "playbooks",
+            "automated_response"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "content_pack",
+        "description": "Full integration with enrichment commands, playbooks, and automated IoC investigation via GTI API."
+    },
+    {
+        "category": "SOAR Platforms",
+        "product": "Splunk SOAR",
+        "vendor": "Splunk",
+        "capabilities": [
+            "enrichment",
+            "incident_response",
+            "playbooks",
+            "automated_response"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "app",
+        "description": "Phantom/SOAR app for enrichment actions and automated playbook-driven IoC validation."
+    },
+    {
+        "category": "SOAR Platforms",
+        "product": "Google Chronicle SOAR",
+        "vendor": "Google",
+        "capabilities": [
+            "enrichment",
+            "incident_response",
+            "playbooks",
+            "automated_response",
+            "case_management"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "native",
+        "description": "Native Google integration - Chronicle SOAR (formerly Siemplify) with built-in GTI enrichment."
+    },
+    {
+        "category": "SOAR Platforms",
+        "product": "Swimlane",
+        "vendor": "Swimlane",
+        "capabilities": [
+            "enrichment",
+            "incident_response",
+            "playbooks",
+            "automated_response"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "connector",
+        "description": "Low-code SOAR with GTI connector for enrichment and automated triage."
+    },
+    {
+        "category": "SOAR Platforms",
+        "product": "Tines",
+        "vendor": "Tines",
+        "capabilities": [
+            "enrichment",
+            "playbooks",
+            "automated_response",
+            "no_code_automation"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "api",
+        "description": "No-code automation platform with GTI API actions for threat enrichment workflows."
+    },
+    {
+        "category": "SOAR Platforms",
+        "product": "TheHive",
+        "vendor": "StrangeBee",
+        "capabilities": [
+            "enrichment",
+            "incident_response",
+            "case_management",
+            "cortex_analyzers"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "cortex_analyzer",
+        "description": "Open-source SOAR with Cortex analyzers for GTI/VT lookups and observable enrichment."
+    },
+    {
+        "category": "SOAR Platforms",
+        "product": "IBM QRadar SOAR",
+        "vendor": "IBM",
+        "capabilities": [
+            "enrichment",
+            "incident_response",
+            "playbooks",
+            "case_management"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "app",
+        "description": "QRadar SOAR (Resilient) app for artifact enrichment and automated response actions."
+    },
+    {
+        "category": "SIEM/XDR",
+        "product": "Google Chronicle SecOps",
+        "vendor": "Google",
+        "capabilities": [
+            "log_correlation",
+            "threat_detection",
+            "ioc_matching",
+            "retrohunt",
+            "entity_enrichment"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "native",
+        "description": "Native GTI integration - Chronicle ingests VT verdicts and enriches all entities in detection rules."
+    },
+    {
+        "category": "SIEM/XDR",
+        "product": "Splunk Enterprise Security",
+        "vendor": "Splunk",
+        "capabilities": [
+            "log_correlation",
+            "threat_detection",
+            "ioc_matching",
+            "threat_intel_framework"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "app",
+        "description": "Splunk ES app for threat intelligence framework integration and real-time IoC correlation."
+    },
+    {
+        "category": "SIEM/XDR",
+        "product": "Microsoft Sentinel",
+        "vendor": "Microsoft",
+        "capabilities": [
+            "log_correlation",
+            "threat_detection",
+            "ioc_matching",
+            "hunting_queries",
+            "workbooks"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "data_connector",
+        "description": "Sentinel data connector and analytic rules for GTI threat intelligence feeds."
+    },
+    {
+        "category": "SIEM/XDR",
+        "product": "Elastic Security",
+        "vendor": "Elastic",
+        "capabilities": [
+            "log_correlation",
+            "threat_detection",
+            "ioc_matching",
+            "detection_rules"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "integration",
+        "description": "Elastic Agent integration for ingesting GTI/VT threat intelligence and matching against telemetry."
+    },
+    {
+        "category": "SIEM/XDR",
+        "product": "IBM QRadar",
+        "vendor": "IBM",
+        "capabilities": [
+            "log_correlation",
+            "threat_detection",
+            "ioc_matching",
+            "offense_enrichment"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "app",
+        "description": "QRadar app for threat intelligence reference sets and offense enrichment via GTI."
+    },
+    {
+        "category": "SIEM/XDR",
+        "product": "Sumo Logic",
+        "vendor": "Sumo Logic",
+        "capabilities": [
+            "log_correlation",
+            "threat_detection",
+            "ioc_matching"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain"
+        ],
+        "integration_type": "app",
+        "description": "Cloud SIEM with GTI threat intelligence lookup tables and correlation rules."
+    },
+    {
+        "category": "SIEM/XDR",
+        "product": "LogRhythm",
+        "vendor": "LogRhythm",
+        "capabilities": [
+            "log_correlation",
+            "threat_detection",
+            "ioc_matching"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "plugin",
+        "description": "LogRhythm threat intelligence list integration for GTI-sourced IoC correlation."
+    },
+    {
+        "category": "EDR/Endpoint",
+        "product": "CrowdStrike Falcon",
+        "vendor": "CrowdStrike",
+        "capabilities": [
+            "file_scan",
+            "reputation",
+            "threat_detection",
+            "endpoint_telemetry",
+            "real_time_response"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "ip",
+            "domain"
+        ],
+        "integration_type": "api",
+        "description": "Falcon Store app and API integration for hash reputation lookups and threat graph enrichment."
+    },
+    {
+        "category": "EDR/Endpoint",
+        "product": "Microsoft Defender for Endpoint",
+        "vendor": "Microsoft",
+        "capabilities": [
+            "file_scan",
+            "reputation",
+            "threat_detection",
+            "endpoint_telemetry",
+            "automated_investigation"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "url",
+            "ip",
+            "domain"
+        ],
+        "integration_type": "api",
+        "description": "MDE custom indicators and threat intelligence APIs enriched with GTI verdicts."
+    },
+    {
+        "category": "EDR/Endpoint",
+        "product": "SentinelOne Singularity",
+        "vendor": "SentinelOne",
+        "capabilities": [
+            "file_scan",
+            "reputation",
+            "threat_detection",
+            "endpoint_telemetry"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "ip",
+            "domain"
+        ],
+        "integration_type": "marketplace_app",
+        "description": "SentinelOne Marketplace integration for GTI/VT hash enrichment and threat context."
+    },
+    {
+        "category": "EDR/Endpoint",
+        "product": "VMware Carbon Black",
+        "vendor": "Broadcom",
+        "capabilities": [
+            "file_scan",
+            "reputation",
+            "threat_detection",
+            "endpoint_telemetry"
+        ],
+        "ioc_types": [
+            "file",
+            "hash"
+        ],
+        "integration_type": "connector",
+        "description": "Carbon Black Cloud connector for binary reputation scoring via GTI/VT."
+    },
+    {
+        "category": "EDR/Endpoint",
+        "product": "Cybereason",
+        "vendor": "Cybereason",
+        "capabilities": [
+            "file_scan",
+            "reputation",
+            "threat_detection"
+        ],
+        "ioc_types": [
+            "file",
+            "hash"
+        ],
+        "integration_type": "api",
+        "description": "Cybereason MalOp enrichment with GTI/VT reputation data for file verdicts."
+    },
+    {
+        "category": "EDR/Endpoint",
+        "product": "Trellix Endpoint Security",
+        "vendor": "Trellix",
+        "capabilities": [
+            "file_scan",
+            "reputation",
+            "threat_detection",
+            "endpoint_telemetry"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "url"
+        ],
+        "integration_type": "api",
+        "description": "Trellix (formerly McAfee/FireEye) endpoint integration for GTI threat intelligence feeds."
+    },
+    {
+        "category": "TIP Platforms",
+        "product": "MISP",
+        "vendor": "CIRCL",
+        "capabilities": [
+            "threat_sharing",
+            "ioc_management",
+            "enrichment",
+            "stix_export",
+            "correlation"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash",
+            "email"
+        ],
+        "integration_type": "module",
+        "description": "Open-source TIP with native VT/GTI enrichment modules and STIX/TAXII export."
+    },
+    {
+        "category": "TIP Platforms",
+        "product": "OpenCTI",
+        "vendor": "Filigran",
+        "capabilities": [
+            "threat_sharing",
+            "ioc_management",
+            "enrichment",
+            "stix_export",
+            "knowledge_graph"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash",
+            "email"
+        ],
+        "integration_type": "connector",
+        "description": "Open-source TIP with GTI/VT connector for indicator enrichment and STIX2.1 knowledge graph."
+    },
+    {
+        "category": "TIP Platforms",
+        "product": "ThreatConnect",
+        "vendor": "ThreatConnect",
+        "capabilities": [
+            "threat_sharing",
+            "ioc_management",
+            "enrichment",
+            "playbooks"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "app",
+        "description": "ThreatConnect app for GTI/VT indicator enrichment and playbook-driven threat workflows."
+    },
+    {
+        "category": "TIP Platforms",
+        "product": "Anomali ThreatStream",
+        "vendor": "Anomali",
+        "capabilities": [
+            "threat_sharing",
+            "ioc_management",
+            "enrichment",
+            "threat_intel_feeds"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "integration",
+        "description": "Anomali ThreatStream integration for GTI feed ingestion and observable enrichment."
+    },
+    {
+        "category": "TIP Platforms",
+        "product": "Recorded Future",
+        "vendor": "Recorded Future",
+        "capabilities": [
+            "threat_sharing",
+            "ioc_management",
+            "enrichment",
+            "risk_scoring"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "module",
+        "description": "Recorded Future intelligence card enrichment with GTI/VT data for multi-source correlation."
+    },
+    {
+        "category": "TIP Platforms",
+        "product": "ThreatQuotient",
+        "vendor": "ThreatQuotient",
+        "capabilities": [
+            "threat_sharing",
+            "ioc_management",
+            "enrichment",
+            "scoring"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "integration",
+        "description": "ThreatQ integration for GTI-enriched indicators with relevance scoring."
+    },
+    {
+        "category": "Email Security",
+        "product": "Proofpoint Email Protection",
+        "vendor": "Proofpoint",
+        "capabilities": [
+            "email_filtering",
+            "url_reputation",
+            "attachment_scan",
+            "threat_detection"
+        ],
+        "ioc_types": [
+            "url",
+            "file",
+            "hash",
+            "email"
+        ],
+        "integration_type": "api",
+        "description": "Proofpoint integration for URL detonation and attachment analysis via GTI/VT."
+    },
+    {
+        "category": "Email Security",
+        "product": "Mimecast",
+        "vendor": "Mimecast",
+        "capabilities": [
+            "email_filtering",
+            "url_reputation",
+            "attachment_scan"
+        ],
+        "ioc_types": [
+            "url",
+            "file",
+            "hash"
+        ],
+        "integration_type": "api",
+        "description": "Mimecast targeted threat protection enriched with GTI URL and file verdicts."
+    },
+    {
+        "category": "Email Security",
+        "product": "Abnormal Security",
+        "vendor": "Abnormal Security",
+        "capabilities": [
+            "email_filtering",
+            "bec_detection",
+            "account_takeover"
+        ],
+        "ioc_types": [
+            "url",
+            "email",
+            "domain"
+        ],
+        "integration_type": "api",
+        "description": "Abnormal Security behavioral email protection with GTI URL reputation enrichment."
+    },
+    {
+        "category": "Email Security",
+        "product": "Microsoft Defender for Office 365",
+        "vendor": "Microsoft",
+        "capabilities": [
+            "email_filtering",
+            "url_reputation",
+            "attachment_scan",
+            "safe_links",
+            "safe_attachments"
+        ],
+        "ioc_types": [
+            "url",
+            "file",
+            "hash",
+            "email"
+        ],
+        "integration_type": "api",
+        "description": "MDO with GTI threat intelligence for Safe Links detonation and attachment analysis."
+    },
+    {
+        "category": "SASE/Secure DNS",
+        "product": "Zscaler Internet Access",
+        "vendor": "Zscaler",
+        "capabilities": [
+            "url_filtering",
+            "dns_security",
+            "cloud_firewall",
+            "ssl_inspection"
+        ],
+        "ioc_types": [
+            "url",
+            "domain",
+            "ip"
+        ],
+        "integration_type": "api",
+        "description": "Zscaler ZIA integration for GTI-enriched URL categorization and malicious domain blocking."
+    },
+    {
+        "category": "SASE/Secure DNS",
+        "product": "Cisco Umbrella",
+        "vendor": "Cisco",
+        "capabilities": [
+            "dns_security",
+            "url_filtering",
+            "cloud_firewall"
+        ],
+        "ioc_types": [
+            "domain",
+            "url",
+            "ip"
+        ],
+        "integration_type": "api",
+        "description": "Cisco Umbrella DNS-layer security with GTI domain reputation intelligence."
+    },
+    {
+        "category": "SASE/Secure DNS",
+        "product": "Cloudflare Gateway",
+        "vendor": "Cloudflare",
+        "capabilities": [
+            "dns_security",
+            "url_filtering",
+            "zero_trust"
+        ],
+        "ioc_types": [
+            "domain",
+            "url",
+            "ip"
+        ],
+        "integration_type": "api",
+        "description": "Cloudflare Gateway DNS filtering enriched with GTI malicious domain intelligence."
+    },
+    {
+        "category": "SASE/Secure DNS",
+        "product": "Palo Alto Prisma Access",
+        "vendor": "Palo Alto Networks",
+        "capabilities": [
+            "url_filtering",
+            "dns_security",
+            "cloud_firewall",
+            "ssl_inspection",
+            "zero_trust"
+        ],
+        "ioc_types": [
+            "url",
+            "domain",
+            "ip"
+        ],
+        "integration_type": "native",
+        "description": "Prisma Access SASE with GTI/WildFire integration for URL and DNS threat prevention."
+    },
+    {
+        "category": "Network Perimeter",
+        "product": "Palo Alto Networks NGFW",
+        "vendor": "Palo Alto Networks",
+        "capabilities": [
+            "firewall",
+            "url_filtering",
+            "threat_prevention",
+            "ssl_inspection"
+        ],
+        "ioc_types": [
+            "url",
+            "domain",
+            "ip",
+            "file"
+        ],
+        "integration_type": "native",
+        "description": "Palo Alto NGFW with WildFire + GTI integration for inline file and URL verdicts."
+    },
+    {
+        "category": "Network Perimeter",
+        "product": "Fortinet FortiGate",
+        "vendor": "Fortinet",
+        "capabilities": [
+            "firewall",
+            "url_filtering",
+            "threat_prevention",
+            "ips"
+        ],
+        "ioc_types": [
+            "url",
+            "domain",
+            "ip",
+            "file"
+        ],
+        "integration_type": "connector",
+        "description": "FortiGate NGFW with FortiGuard + GTI threat intelligence for inline blocking."
+    },
+    {
+        "category": "Network Perimeter",
+        "product": "Check Point NGFW",
+        "vendor": "Check Point",
+        "capabilities": [
+            "firewall",
+            "url_filtering",
+            "threat_prevention",
+            "threat_emulation"
+        ],
+        "ioc_types": [
+            "url",
+            "domain",
+            "ip",
+            "file"
+        ],
+        "integration_type": "api",
+        "description": "Check Point NGFW with ThreatCloud + GTI integration for file and URL analysis."
+    },
+    {
+        "category": "Forensics/Sandbox",
+        "product": "Cuckoo Sandbox",
+        "vendor": "Cuckoo Foundation",
+        "capabilities": [
+            "dynamic_analysis",
+            "malware_analysis",
+            "behavioral_detection",
+            "report_generation"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "url"
+        ],
+        "integration_type": "module",
+        "description": "Open-source malware analysis sandbox with GTI/VT processing module for sample submission."
+    },
+    {
+        "category": "Forensics/Sandbox",
+        "product": "Joe Sandbox",
+        "vendor": "Joe Security",
+        "capabilities": [
+            "dynamic_analysis",
+            "malware_analysis",
+            "behavioral_detection",
+            "report_generation"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "url"
+        ],
+        "integration_type": "api",
+        "description": "Joe Sandbox deep malware analysis with GTI/VT verdict cross-referencing."
+    },
+    {
+        "category": "Forensics/Sandbox",
+        "product": "ANY.RUN",
+        "vendor": "ANY.RUN",
+        "capabilities": [
+            "dynamic_analysis",
+            "interactive_sandbox",
+            "malware_analysis"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "url"
+        ],
+        "integration_type": "api",
+        "description": "Interactive cloud sandbox with GTI/VT hash and URL reputation lookups."
+    },
+    {
+        "category": "Forensics/Sandbox",
+        "product": "Hybrid Analysis",
+        "vendor": "CrowdStrike",
+        "capabilities": [
+            "dynamic_analysis",
+            "malware_analysis",
+            "report_generation"
+        ],
+        "ioc_types": [
+            "file",
+            "hash",
+            "url"
+        ],
+        "integration_type": "native",
+        "description": "Hybrid Analysis (Falcon Sandbox) with built-in VT/GTI report correlation."
+    },
+    {
+        "category": "IT Service Management",
+        "product": "ServiceNow SecOps",
+        "vendor": "ServiceNow",
+        "capabilities": [
+            "incident_management",
+            "enrichment",
+            "vulnerability_response",
+            "threat_intel"
+        ],
+        "ioc_types": [
+            "file",
+            "url",
+            "ip",
+            "domain",
+            "hash"
+        ],
+        "integration_type": "app",
+        "description": "ServiceNow Security Operations with GTI threat intelligence enrichment for security incidents."
+    },
+    {
+        "category": "Reversing Tools",
+        "product": "IDA Pro",
+        "vendor": "Hex-Rays",
+        "capabilities": [
+            "static_analysis",
+            "disassembly",
+            "reverse_engineering"
+        ],
+        "ioc_types": [
+            "file",
+            "hash"
+        ],
+        "integration_type": "plugin",
+        "description": "IDA Pro plugin for GTI/VT sample download and community comments during reverse engineering."
+    },
+    {
+        "category": "Reversing Tools",
+        "product": "Ghidra",
+        "vendor": "NSA",
+        "capabilities": [
+            "static_analysis",
+            "disassembly",
+            "reverse_engineering",
+            "decompilation"
+        ],
+        "ioc_types": [
+            "file",
+            "hash"
+        ],
+        "integration_type": "plugin",
+        "description": "Ghidra extension for GTI/VT hash lookups and binary reputation checks."
+    },
+    {
+        "category": "Reversing Tools",
+        "product": "Radare2",
+        "vendor": "radare.org",
+        "capabilities": [
+            "static_analysis",
+            "disassembly",
+            "reverse_engineering"
+        ],
+        "ioc_types": [
+            "file",
+            "hash"
+        ],
+        "integration_type": "plugin",
+        "description": "Radare2 plugin for inline GTI/VT hash reputation lookups during analysis."
+    }
+]

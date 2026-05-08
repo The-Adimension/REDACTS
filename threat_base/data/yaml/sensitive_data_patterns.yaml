@@ -1,0 +1,312 @@
+# REDACTS Sensitive Data Patterns - Externalized from knowledge/sensitive_data.py
+# 25 regex-based patterns for PHI/PII/credential/financial data detection.
+#
+# Mapped to HIPAA's 18 Protected Health Information (PHI) identifiers where applicable.
+# Patterns are compiled with re.compile() at load time.
+#
+# Version: 1.0.0
+
+---
+version: "1.0.0"
+schema: "sensitive_data_patterns/v1"
+
+# File-scanning constraints (used by SensitiveDataScanner)
+scan_constraints:
+  max_file_size_bytes: 10485760  # 10 MB
+  # Snippet windowing: caps the size of ``snippet_redacted`` so a
+  # single match in a minified asset cannot inflate every finding
+  # to multi-megabyte size. The reviewer can re-derive full context
+  # from ``file_sha256`` + ``snippet_window`` against the on-disk
+  # artefact. See threat_base/sensitive_data.py for details.
+  snippet_max_bytes: 512
+  snippet_context_radius: 200
+  scannable_extensions:
+    - .php
+    - .inc
+    - .js
+    - .json
+    - .yml
+    - .yaml
+    - .xml
+    - .sql
+    - .txt
+    - .csv
+    - .html
+    - .htm
+    - .conf
+    - .ini
+    - .env
+    - .log
+    - .md
+    - .htaccess
+    - .user.ini
+    - .py
+    - .sh
+  scannable_dot_files:
+    - .htaccess
+    - .env
+    - .user.ini
+
+# Quick-gate regex (pre-filter lines that cannot contain anything interesting)
+quick_gate_pattern: >-
+  (?:\d{3}[\-]\d{2}[\-]\d{4}|@|\(\d{3}\)|\+1\d{10}|\d{4}[\s\-]?\d{4}[\s\-]?\d{4}|AKIA|BEGIN.{0,10}PRIVATE|password|passwd|pwd|\$hostname|\$db|\$username|aws_secret|eyJ[A-Za-z0-9_\-]{10}|dob|birth|DOB|mrn|MRN|medical.record|patient_name|first_name|last_name|patientName|firstName|lastName|[A-Za-z0-9+/]{50}|[0-9a-fA-F]{32})
+
+# Detection Patterns (25 patterns)
+# Each pattern: regex, data_type, category, severity, assessment,
+#               hipaa_identifier, group_index (0 = entire match)
+
+patterns:
+ # a. Social Security Numbers (HIPAA #7)
+
+  - data_type: ssn
+    category: PII
+    severity: CRITICAL
+    pattern: '\b(\d{3}-\d{2}-\d{4})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Social Security Number in XXX-XX-XXXX format detected."
+    hipaa_identifier: true
+    group_index: 1
+
+  - data_type: ssn_compact
+    category: PII
+    severity: HIGH
+    pattern: '(?<!\d)(\d{9})(?!\d)'
+    pattern_flags: IGNORECASE
+    assessment: "Possible 9-digit SSN (compact format) detected."
+    hipaa_identifier: true
+    group_index: 1
+
+ # b. Email addresses (HIPAA #6)
+
+  - data_type: email
+    category: PII
+    severity: MEDIUM
+    pattern: '\b([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Email address detected."
+    hipaa_identifier: true
+    group_index: 1
+
+ # c. Phone numbers (HIPAA #4)
+
+  - data_type: phone
+    category: PII
+    severity: MEDIUM
+    pattern: '(\(\d{3}\)\s?\d{3}[.\-]\d{4})'
+    pattern_flags: IGNORECASE
+    assessment: "Phone number in (XXX) XXX-XXXX format detected."
+    hipaa_identifier: true
+    group_index: 1
+
+  - data_type: phone
+    category: PII
+    severity: MEDIUM
+    pattern: '\b(\d{3}[.\-]\d{3}[.\-]\d{4})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Phone number in XXX-XXX-XXXX format detected."
+    hipaa_identifier: true
+    group_index: 1
+
+  - data_type: phone
+    category: PII
+    severity: MEDIUM
+    pattern: '(\+1\d{10})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Phone number in +1XXXXXXXXXX format detected."
+    hipaa_identifier: true
+    group_index: 1
+
+ # d. Credit card numbers (HIPAA #10 - account numbers)
+
+  - data_type: credit_card_visa
+    category: FINANCIAL
+    severity: CRITICAL
+    pattern: '\b(4\d{3}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Possible Visa credit card number detected."
+    hipaa_identifier: true
+    group_index: 1
+
+  - data_type: credit_card_mc
+    category: FINANCIAL
+    severity: CRITICAL
+    pattern: '\b(5[1-5]\d{2}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Possible MasterCard credit card number detected."
+    hipaa_identifier: true
+    group_index: 1
+
+  - data_type: credit_card_amex
+    category: FINANCIAL
+    severity: CRITICAL
+    pattern: '\b(3[47]\d{2}[\s\-]?\d{6}[\s\-]?\d{5})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Possible American Express credit card number detected."
+    hipaa_identifier: true
+    group_index: 1
+
+  - data_type: credit_card_discover
+    category: FINANCIAL
+    severity: CRITICAL
+    pattern: '\b(6(?:011|5\d{2})[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4})\b'
+    pattern_flags: IGNORECASE
+    assessment: "Possible Discover credit card number detected."
+    hipaa_identifier: true
+    group_index: 1
+
+ # e. IP addresses (HIPAA #15)
+
+  - data_type: ip_address
+    category: INFRASTRUCTURE
+    severity: MEDIUM
+    pattern: '\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b'
+    pattern_flags: IGNORECASE
+    assessment: "IPv4 address detected."
+    hipaa_identifier: true
+    group_index: 1
+
+ # f. REDCap API tokens (HIPAA #18 - unique identifier)
+
+  - data_type: api_token
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '\b([0-9A-Fa-f]{32})\b'
+    pattern_flags: IGNORECASE
+    assessment: "32-character hex string detected - possible REDCap API token."
+    hipaa_identifier: true
+    group_index: 1
+
+ # g. Passwords in source code
+
+  - data_type: password
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '\$(?:password|passwd|pwd)\s*=\s*[''"](.+?)[''"]'
+    pattern_flags: IGNORECASE
+    assessment: "Hard-coded password assignment detected (PHP variable)."
+    hipaa_identifier: false
+    group_index: 1
+
+  - data_type: password
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '(?:password|passwd|pwd)\s*[:=]\s*[''"](.+?)[''"]'
+    pattern_flags: IGNORECASE
+    assessment: "Hard-coded password assignment detected."
+    hipaa_identifier: false
+    group_index: 1
+
+ # h. Database credentials
+
+  - data_type: db_credential
+    category: CREDENTIAL
+    severity: HIGH
+    pattern: '\$(?:hostname|db|username|database_host|database_name|database_user)\s*=\s*[''"](.+?)[''"]'
+    pattern_flags: IGNORECASE
+    assessment: "Database connection variable with embedded credential detected."
+    hipaa_identifier: false
+    group_index: 1
+
+ # i. AWS keys
+
+  - data_type: aws_access_key
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '\b(AKIA[0-9A-Z]{16})\b'
+    pattern_flags: IGNORECASE
+    assessment: "AWS Access Key ID detected."
+    hipaa_identifier: false
+    group_index: 1
+
+  - data_type: aws_secret_key
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[:=]\s*[''"]?([A-Za-z0-9/+=]{40})[''"]?'
+    pattern_flags: IGNORECASE
+    assessment: "AWS Secret Access Key detected."
+    hipaa_identifier: false
+    group_index: 1
+
+ # j. Private keys
+
+  - data_type: private_key_rsa
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '(-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----)'
+    pattern_flags: IGNORECASE
+    assessment: "RSA private key header detected."
+    hipaa_identifier: false
+    group_index: 1
+
+  - data_type: private_key_ec
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '(-----BEGIN\s+EC\s+PRIVATE\s+KEY-----)'
+    pattern_flags: IGNORECASE
+    assessment: "EC private key header detected."
+    hipaa_identifier: false
+    group_index: 1
+
+  - data_type: private_key_openssh
+    category: CREDENTIAL
+    severity: CRITICAL
+    pattern: '(-----BEGIN\s+OPENSSH\s+PRIVATE\s+KEY-----)'
+    pattern_flags: IGNORECASE
+    assessment: "OpenSSH private key header detected."
+    hipaa_identifier: false
+    group_index: 1
+
+ # k. Base64-encoded blobs (50+ chars)
+
+  - data_type: base64_blob
+    category: CREDENTIAL
+    severity: HIGH
+    pattern: '(?:=\s*|:\s*|''|")([A-Za-z0-9+/]{50,}={0,2})(?:''|"|\s|;|$)'
+    pattern_flags: IGNORECASE
+    assessment: "Long Base64-encoded blob detected - may contain encoded credentials."
+    hipaa_identifier: false
+    group_index: 1
+
+ # l. Dates of birth (HIPAA #3)
+
+  - data_type: date_of_birth
+    category: PHI
+    severity: HIGH
+    pattern: '(?:dob|date.of.birth|birth.?date|DOB)\s*[:=]\s*[''"]?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})[''"]?'
+    pattern_flags: IGNORECASE
+    assessment: "Date of birth value detected."
+    hipaa_identifier: true
+    group_index: 1
+
+ # m. Medical record numbers (HIPAA #8)
+
+  - data_type: medical_record_number
+    category: PHI
+    severity: HIGH
+    pattern: '(?:mrn|medical.record|MRN|record.number)\s*[:=]\s*[''"]?([A-Za-z0-9]{6,10})[''"]?'
+    pattern_flags: IGNORECASE
+    assessment: "Medical record number pattern detected."
+    hipaa_identifier: true
+    group_index: 1
+
+ # n. Names in structured data (HIPAA #1)
+
+  - data_type: person_name
+    category: PHI
+    severity: HIGH
+    pattern: '(?:patient_name|first_name|last_name|patientName|firstName|lastName)\s*[:=]\s*[''"]([A-Za-z\s\-''.]{2,60})[''"]'
+    pattern_flags: IGNORECASE
+    assessment: "Patient/person name value assigned in source code."
+    hipaa_identifier: true
+    group_index: 1
+
+ # o. JWT tokens (HIPAA #18 - unique identifier)
+
+  - data_type: jwt_token
+    category: CREDENTIAL
+    severity: HIGH
+    pattern: '\b(eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)\b'
+    pattern_flags: IGNORECASE
+    assessment: "JSON Web Token (JWT) detected."
+    hipaa_identifier: true
+    group_index: 1

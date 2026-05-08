@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / type-check / coverage caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE / editor
+.vscode/
+.idea/
+.project
+.settings/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local case file (per-engagement; case.example.toml is the template)
+case.toml
+
+# Local case input staging (REDCap source archives, dumps, etc.)
+.archive/
+
+# Default output / scratch directories driven by case.toml [paths]
+output/
+logs/
+tmp/
+
+# Scan output artifacts
+*.sarif
+*.sarif.json
+
+# Logs and temp files
+*.log
+*.bak
+*.tmp
+
+# Dynamic (DAST) runtime artifacts
+dynamic/node_modules/
+dynamic/test-results/
+dynamic/results/
+dynamic/playwright-report/
+
+# Threat-base prefetch artifacts (downloaded at runtime, digest-pinned)
+threat_base/data/enterprise-attack.json
+threat_base/data/enterprise-attack.json.sha256
+threat_base/data/cwec_v*.csv
+threat_base/data/cwec_v*.csv.sha256
+threat_base/data/nvd-*.json
+threat_base/data/nvd-*.json.sha256
+
+# Compiled YARA rules
+*.yac
+*.compiled
+
+# REDCap source trees and archives must never be committed
+redcap/
+redcap_v*/
+REDCap/
+REDCap_v*/
+redcap*.zip
+redcap*.tar.gz
+*.sql
+*.sql.gz
+*.sql.bak
+
+# Release-artifact staging (built locally, attached to GitHub Releases)
+legacy/

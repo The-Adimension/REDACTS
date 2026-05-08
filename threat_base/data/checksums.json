@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "description": "SHA-256 integrity manifest for REDACTS knowledge data files",
+  "files": {
+    "yaml/attack_vectors.yaml": "sha256:48186f3c92b89de7558c0b88110e696d54123b8492bf0b6a5eeb18f5f2ae4827",
+    "yaml/infinitered_campaign.yaml": "sha256:41477bad575a853e283e3eaf5d90278cfe5525c568bfc455fdb9d71f84849f6d",
+    "yaml/ioc_indicators.yaml": "sha256:9ac192486fc499cace672e46d3998b12e9dcff71125efaed0c858db3e31f49ef",
+    "yaml/mitre_mapping.yaml": "sha256:41b3a2bfe3e037b146e72496e60a98efd5bbc2714f656249946001147789f204",
+    "yaml/redcap_baseline.yaml": "sha256:776c8adba92560c1b5081dc497fb8e6dcba7cccd209c0baf02befb1cf66a632b",
+    "yaml/security_rules.yaml": "sha256:4d3e0206126ebc090e68bef8570af4afd98d004b6918d78fba650bf560c32c44",
+    "yaml/sensitive_data_patterns.yaml": "sha256:9cef72ea15fcf585dd89a3ee1dada7fefa6d966545405b832589132cf3f43610"
+  }
+}

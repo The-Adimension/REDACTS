@@ -1,0 +1,413 @@
+"""Tool orchestrator - sequences scanner phases and merges findings.
+
+The orchestrator runs each scanner in a fixed order and feeds the
+results of earlier phases into later ones. It does not contain
+detection logic of its own; the value it adds is the routing and
+correlation between tools whose strengths are complementary.
+
+Phase order and rationale:
+
+    1. Magika typing - runs first because every later phase wants to
+       know what a file actually is. A PHP payload renamed ``logo.png``
+       only reaches Semgrep if Magika reroutes it.
+    2. Discovery / structural diff - narrows the file set to the delta
+       against the reference baseline before running expensive
+       AST-based analysers.
+    3. Regex scanner - fast first pass for patterns that the
+       AST tools do not cover (config-string IoCs, known webshell
+       fingerprints).
+    4. Semgrep / YARA / Trivy - invoked only on files Magika and the
+       diff phase did not exclude.
+    5. Correlate - promotes confidence when independent tools agree on
+       the same file/line. The correlation rules live in
+       :mod:`static.scanners.phases.correlate` and are evaluated, not
+       hard-coded here.
+
+Known limits:
+
+    * If Magika misclassifies a file (it has known blind spots on
+       short files and polyglots - see Google's Magika model card),
+       downstream routing is wrong and the file may bypass Semgrep.
+    * Phase ordering is fixed at the orchestrator; YAML-driven phase
+       skipping happens through ``OrchestratorContext.skip_phases``,
+       not through reordering.
+    * Cross-tool corroboration only fires when at least two tools
+       reported the same file. A single-tool true positive still
+       lands at its native confidence.
+
+Findings flow into a single :class:`FindingCollection` and are
+emitted as SARIF 2.1.0 (https://docs.oasis-open.org/sarif/sarif/v2.1.0/).
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from ..core.findings import (
+    FindingCollection,
+    SeverityLevel,
+)
+from threat_base.cwe_database import CweDatabase
+from .phase_protocol import OrchestratorContext
+from .phases import (
+    CorrelatePhase,
+    DastPhase,
+    DiscoverPhase,
+    MagikaPhase,
+    RegexScannerPhase,
+    SemgrepPhase,
+    TreeSitterPhase,
+    TrivyPhase,
+    YaraPhase,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OrchestratorConfig:
+    """Configuration for the tool orchestrator."""
+
+    # Tool toggles
+    enable_semgrep: bool = True
+    enable_trivy: bool = True
+    enable_yara: bool = True
+    enable_magika: bool = True
+    enable_tree_sitter: bool = True
+    enable_regex_scanner: bool = True  # SecurityScanner (regex)
+    enable_dast: bool = True  # Dynamic Application Security Testing
+
+    # DAST
+    dast_suites: list[str] = field(
+        default_factory=lambda: ["export", "admin", "upgrade"]
+    )
+    dast_timeout: int = 600  # per-suite timeout in seconds
+    dast_keep_stack: bool = False
+    dast_port: int = 0  # 0 = use DAST_PORT env or default 8585
+    dast_package: str = ""  # Path to REDCap source ZIP/dir used to build the DAST app image
+    redcap_version: str = ""  # e.g. "15.7.4" - derived from target ZIP name
+
+    # YARA
+    yara_rules_path: str = ""
+    yara_community_rules: bool = True
+
+    # Semgrep
+    semgrep_rulesets: list[str] = field(
+        default_factory=lambda: [
+            "p/php",  # PHP-specific rules
+            "p/phpcs-security-audit",  # PHP CodeSniffer security audit
+            "p/owasp-top-ten",  # OWASP Top 10 coverage
+            "p/security-audit",  # General security audit
+        ]
+    )
+    semgrep_exclude: list[str] = field(
+        default_factory=lambda: [
+            "vendor",
+            "node_modules",
+            ".git",
+        ]
+    )
+
+    # Trivy
+    trivy_scanners: list[str] = field(default_factory=lambda: ["vuln", "secret"])
+    trivy_severity: str = ""  # e.g. "MEDIUM,HIGH,CRITICAL"
+
+    # Timeouts
+    tool_timeout: int = 300  # per-tool timeout in seconds
+
+    # Output
+    generate_sbom: bool = False
+    sbom_output_path: str = ""
+
+    # Pre-checked dependency state (avoids double Docker detection)
+    docker_available: bool | None = None  # None = not pre-checked
+    docker_compose_available: bool | None = None
+
+
+class ToolOrchestrator:
+    """Central orchestrator coordinating all REDACTS tools.
+
+    Uses the Strategy pattern with :class:`ScanPhase` plugins.
+    Phases are executed in order; each receives the shared
+    :class:`OrchestratorContext` carrying mutable state
+    (findings, Magika results, tool availability, timings).
+
+    Default pipeline::
+
+        1. DiscoverPhase      - probe tool availability
+        2. MagikaPhase        - type every file (routing intelligence)
+        3. SemgrepPhase       - AST-based PHP security analysis
+        4. TrivyPhase         - dependency CVE scanning and secrets
+        5. YaraPhase          - webshell/backdoor detection
+        6. RegexScannerPhase  - regex-based supplementary hints
+        7. TreeSitterPhase    - structural context enrichment
+        8. CorrelatePhase     - cross-tool correlation
+        9. DastPhase          - dynamic validation via Playwright
+
+    Custom phases can be injected via the *phases* constructor argument.
+    """
+
+    def __init__(
+        self,
+        target_path: Path,
+        baseline_path: Path | None = None,
+        config: OrchestratorConfig | None = None,
+        only_files: set[str] | None = None,
+        output_dir: Path | None = None,
+        *,
+        max_file_size_mb: int = 50,
+        phases: list[Any] | None = None,
+    ) -> None:
+        self.target_path = target_path
+        self.baseline_path = baseline_path
+        self.config = config or OrchestratorConfig()
+
+        # Output directory for analysis artifacts (DAST results, SBOM).
+        # Falls back to a sibling ``_orchestrator`` dir next to the target
+        # to avoid writing into the evidence being analysed.
+        self.output_dir = output_dir or target_path.parent / "_orchestrator"
+
+        # Delta-aware scanning: when *only_files* is provided (relative
+        # paths like ``"Classes/Foo.php"``), only those files generate
+        # findings.  Magika still types ALL files (needed for routing
+        # intelligence), but mismatch findings are scoped to the delta.
+        self.only_files: set[str] | None = only_files
+        if only_files is not None:
+            logger.info(
+                "Orchestrator: delta-aware mode - %d files in scope",
+                len(only_files),
+            )
+
+        # Shared mutable context threaded through every phase
+        self._context = OrchestratorContext(
+            target_path=target_path,
+            baseline_path=baseline_path,
+            config=self.config,
+            only_files=only_files,
+            output_dir=self.output_dir,
+            max_file_size_mb=max_file_size_mb,
+            collection=FindingCollection(
+                target_path=str(target_path),
+                baseline_path=str(baseline_path) if baseline_path else "",
+            ),
+        )
+
+        # Phase pipeline (injected or default)
+        self._phases: list[Any] = (
+            list(phases)
+            if phases is not None
+            else [
+                DiscoverPhase(),
+                MagikaPhase(),
+                SemgrepPhase(),
+                TrivyPhase(),
+                YaraPhase(),
+                RegexScannerPhase(),
+                TreeSitterPhase(),
+                CorrelatePhase(),
+                DastPhase(),
+            ]
+        )
+
+    @property
+    def phases(self) -> list[Any]:
+        """Return the ordered phase list (read-only snapshot)."""
+        return list(self._phases)
+
+    # --- Execution ----------------
+
+    def run_all(self) -> FindingCollection:
+        """Execute the full orchestrated scan pipeline.
+
+        Returns a FindingCollection with cross-tool corroboration,
+        Magika enrichment, and MITRE/CWE/CVSS mappings.
+        """
+        total_start = time.monotonic()
+        logger.info("REDACTS Orchestrator: Starting scan of %s", self.target_path)
+
+        for phase in self._phases:
+            phase_start = time.monotonic()
+            try:
+                phase.execute(self._context)
+            except KeyboardInterrupt:
+                # Operator-initiated abort - propagate so the CLI can
+                # tear down cleanly. Never silenced.
+                raise
+            except Exception as exc:
+                # Record phase failures so the workflow layer can map
+                # them to a non-zero exit code.
+                logger.error(
+                    "Phase '%s' failed: %s: %s",
+                    phase.name, type(exc).__name__, exc,
+                    exc_info=True,
+                )
+                self._context.phase_failures.append(
+                    (phase.name, f"{type(exc).__name__}: {exc}")
+                )
+            self._context.phase_timings[phase.name] = time.monotonic() - phase_start
+
+        # Finalize
+        self._enrich_cwe()
+        self._context.collection.scan_completed = datetime.now(timezone.utc).isoformat()
+        total_elapsed = time.monotonic() - total_start
+        self._context.phase_timings["total"] = total_elapsed
+
+        logger.info(
+            "REDACTS Orchestrator: Complete - %d findings, %d corroborated, %.1fs",
+            len(self._context.collection.findings),
+            len(self._context.collection.corroborated_findings),
+            total_elapsed,
+        )
+
+        return self._context.collection
+
+    # --- CWE enrichment -----------
+
+    def _enrich_cwe(self) -> None:
+        """Enrich UnifiedFinding instances with CWE names from the MITRE database.
+
+        Best-effort - if the CSV is missing (e.g., dev environment without
+        data files), logs a warning and skips.  Never fails silently on
+        integrity mismatch (CweDatabase raises ValueError in that case).
+        """
+        if not self._context.collection.findings:
+            return  # Nothing to enrich
+
+        try:
+            db = CweDatabase()
+        except ValueError:
+            raise  # Integrity mismatch - do NOT swallow
+        except Exception as exc:
+            logger.warning("CWE enrichment unavailable: %s", exc)
+            return
+
+        enriched = 0
+        for finding in self._context.collection.findings:
+            if finding.cwe_id and not finding.cwe_name:
+                name = db.get_name(finding.cwe_id)
+                if name:
+                    finding.cwe_name = name
+                    enriched += 1
+            if finding.cwe_id and not finding.recommendation:
+                rec = db.get_recommendation(finding.cwe_id)
+                if rec:
+                    finding.recommendation = rec
+
+        if enriched:
+            logger.info("CWE enrichment: %d finding names resolved", enriched)
+
+    # --- Public query API ---------
+
+    @property
+    def findings(self) -> FindingCollection:
+        """The current finding collection."""
+        return self._context.collection
+
+    @property
+    def magika_results(self) -> dict[str, Any]:
+        """Magika file type results keyed by relative path."""
+        return self._context.magika_results
+
+    @property
+    def tool_availability(self) -> dict[str, bool]:
+        """Which tools are installed and usable."""
+        return self._context.tool_availability
+
+    @property
+    def phase_timings(self) -> dict[str, float]:
+        """Execution time per phase in seconds."""
+        return self._context.phase_timings
+
+    @property
+    def phase_failures(self) -> list[tuple[str, str]]:
+        """Phases that raised an exception during ``run_all``.
+
+        Each entry is ``(phase_name, "ExcType: message")``. A non-empty
+        list means the scan completed with at least one phase
+        unrecoverably broken - the workflow layer translates this into
+        a non-zero exit code.
+        """
+        return self._context.phase_failures
+
+    def get_suspicious_files(self) -> list[dict[str, Any]]:
+        """Return files flagged by multiple signals.
+
+        A file is suspicious if it has:
+            - Magika content-type mismatch, OR
+            - Findings from 2+ different tools, OR
+            - Any CRITICAL severity finding
+        """
+
+        file_signals: dict[str, dict[str, Any]] = {}
+
+        # Magika mismatches
+        for path, mr in self._context.magika_results.items():
+            if not mr.content_type_match:
+                file_signals.setdefault(
+                    path,
+                    {
+                        "path": path,
+                        "signals": [],
+                        "sources": set(),
+                        "max_severity": "info",
+                    },
+                )
+                file_signals[path]["signals"].append(f"magika_mismatch:{mr.label}")
+                file_signals[path]["sources"].add("magika")
+
+        # Findings
+        for f in self._context.collection.findings:
+            if not f.file_path:
+                continue
+            file_signals.setdefault(
+                f.file_path,
+                {
+                    "path": f.file_path,
+                    "signals": [],
+                    "sources": set(),
+                    "max_severity": "info",
+                },
+            )
+            file_signals[f.file_path]["signals"].append(f"{f.source.value}:{f.rule_id}")
+            file_signals[f.file_path]["sources"].add(f.source.value)
+            # Track max severity
+            current = SeverityLevel.from_string(
+                file_signals[f.file_path]["max_severity"]
+            )
+            if f.severity.numeric_rank > current.numeric_rank:
+                file_signals[f.file_path]["max_severity"] = f.severity.value
+
+        # Filter to truly suspicious
+        suspicious = []
+        for path, info in file_signals.items():
+            source_count = len(info["sources"])
+            is_multi_tool = source_count >= 2
+            is_critical = info["max_severity"] == "critical"
+            has_mismatch = any("magika_mismatch" in s for s in info["signals"])
+
+            if is_multi_tool or is_critical or has_mismatch:
+                suspicious.append(
+                    {
+                        "path": info["path"],
+                        "signal_count": len(info["signals"]),
+                        "source_count": source_count,
+                        "sources": sorted(info["sources"]),
+                        "max_severity": info["max_severity"],
+                        "magika_mismatch": has_mismatch,
+                        "signals": info["signals"][:10],  # cap for display
+                    }
+                )
+
+        # Sort by signal count (most suspicious first)
+        return sorted(
+            suspicious,
+            key=lambda x: (
+                -SeverityLevel.from_string(x["max_severity"]).numeric_rank,
+                -x["signal_count"],
+            ),
+        )

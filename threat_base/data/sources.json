@@ -1,0 +1,138 @@
+{
+  "version": "1.0.0",
+  "description": "Provenance manifest for all REDACTS knowledge data sources",
+  "sources": {
+    "cwe_database": {
+      "name": "CWE - Common Weakness Enumeration",
+      "provider": "MITRE Corporation",
+      "url": "https://cwe.mitre.org/data/csv/1000.csv.zip",
+      "version": "4.19",
+      "license": "CWE Terms of Use",
+      "license_url": "https://cwe.mitre.org/about/termsofuse.html",
+      "attribution": "CWE is sponsored by the U.S. Department of Homeland Security (DHS) Cybersecurity and Infrastructure Security Agency (CISA) and managed by the Homeland Security Systems Engineering and Development Institute (HSSEDI) operated by The MITRE Corporation.",
+      "format": "CSV (ZIP-compressed)",
+      "update_command": "redacts update cwe",
+      "notes": "Downloaded as ZIP, extracted to data/cwec_v{version}.csv"
+    },
+    "attack_enterprise": {
+      "name": "MITRE ATT&CK Enterprise",
+      "provider": "The MITRE Corporation",
+      "url": "https://github.com/mitre-attack/attack-stix-data/releases/download/v18.1/enterprise-attack.json",
+      "version": "18.1",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/mitre-attack/attack-stix-data/blob/master/LICENSE.txt",
+      "attribution": "ATT&CK is a registered trademark of The MITRE Corporation.",
+      "format": "STIX 2.1 JSON bundle",
+      "update_command": "redacts update attack",
+      "notes": "~25MB STIX bundle downloaded on first run or explicit update"
+    },
+    "yara_php_malware_finder": {
+      "name": "php-malware-finder YARA rules",
+      "provider": "jvoisin",
+      "url": "https://raw.githubusercontent.com/jvoisin/php-malware-finder/master/data/php.yar",
+      "version": "master (archived 2024-02-11)",
+      "license": "LGPL-3.0",
+      "license_url": "https://github.com/jvoisin/php-malware-finder/blob/master/LICENSE",
+      "attribution": "php-malware-finder by jvoisin",
+      "format": "YARA rule file",
+      "update_command": "redacts update yara",
+      "notes": "Repository archived Feb 2024. Last tagged release: 0.3.5 (Jan 2018). master branch has later commits."
+    },
+    "yara_signature_base_webshells": {
+      "name": "signature-base webshell rules (gen_webshells.yar)",
+      "provider": "Florian Roth / Neo23x0",
+      "url": "https://raw.githubusercontent.com/Neo23x0/signature-base/master/yara/gen_webshells.yar",
+      "version": "master",
+      "license": "DRL-1.1",
+      "license_url": "https://github.com/Neo23x0/signature-base/blob/master/LICENSE",
+      "attribution": "Rule author attribution must be retained in match messages per DRL 1.1 requirements.",
+      "format": "YARA rule file",
+      "update_command": "redacts update yara",
+      "notes": "License changed from CC-BY-NC-4.0 to DRL 1.1. DRL requires retaining author field in match output."
+    },
+    "yara_signature_base_php_webshells": {
+      "name": "signature-base PHP webshell rules (thor-webshells.yar)",
+      "provider": "Florian Roth / Neo23x0",
+      "url": "https://raw.githubusercontent.com/Neo23x0/signature-base/master/yara/thor-webshells.yar",
+      "version": "master",
+      "license": "DRL-1.1",
+      "license_url": "https://github.com/Neo23x0/signature-base/blob/master/LICENSE",
+      "attribution": "Rule author attribution must be retained in match messages per DRL 1.1 requirements.",
+      "format": "YARA rule file",
+      "update_command": "redacts update yara",
+      "notes": "License changed from CC-BY-NC-4.0 to DRL 1.1. DRL requires retaining author field in match output."
+    },
+    "nvd_api": {
+      "name": "National Vulnerability Database (NVD)",
+      "provider": "NIST",
+      "url": "https://services.nvd.nist.gov/rest/json/cves/2.0",
+      "version": "2.0",
+      "license": "Public Domain",
+      "license_url": "https://nvd.nist.gov/developers/terms-of-use",
+      "attribution": "NVD data is produced by NIST and is in the public domain per 17 U.S.C. Sec. 105.",
+      "format": "REST API (JSON)",
+      "update_command": "redacts update nvd",
+      "notes": "Optional enrichment. Requires API key (REDACTS_NVD_API_KEY env var) for higher rate limits. SQLite cache with 7-day TTL."
+    },
+    "redacts_attack_vectors": {
+      "name": "REDACTS Attack Vector Database",
+      "provider": "The Adimension",
+      "url": null,
+      "version": "2.0.0",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/The-Adimension/REDACTS/blob/main/LICENSE",
+      "attribution": "Copyright 2024-2026 The Adimension / Shehab Anwer",
+      "format": "YAML",
+      "update_command": null,
+      "notes": "First-party data, versioned with REDACTS. 34 attack vectors in 7 categories."
+    },
+    "redacts_ioc_database": {
+      "name": "REDACTS IoC Database",
+      "provider": "The Adimension",
+      "url": null,
+      "version": "2.0.0",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/The-Adimension/REDACTS/blob/main/LICENSE",
+      "attribution": "Copyright 2024-2026 The Adimension / Shehab Anwer",
+      "format": "YAML",
+      "update_command": null,
+      "notes": "First-party data, versioned with REDACTS. 17 IoC indicators."
+    },
+    "redacts_infinitered_campaign": {
+      "name": "INFINITERED Campaign Intelligence",
+      "provider": "The Adimension",
+      "url": null,
+      "version": "2.0.0",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/The-Adimension/REDACTS/blob/main/LICENSE",
+      "attribution": "Copyright 2024-2026 The Adimension / Shehab Anwer",
+      "format": "YAML",
+      "update_command": null,
+      "notes": "First-party threat intelligence. Static reference data for INFINITERED campaign (Dec 2025 - Feb 2026)."
+    },
+    "redacts_sensitive_data_patterns": {
+      "name": "REDACTS PHI/PII Detection Patterns",
+      "provider": "The Adimension",
+      "url": null,
+      "version": "2.0.0",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/The-Adimension/REDACTS/blob/main/LICENSE",
+      "attribution": "Copyright 2024-2026 The Adimension / Shehab Anwer",
+      "format": "YAML",
+      "update_command": null,
+      "notes": "First-party data with HIPAA identifier references. 25 detection patterns."
+    },
+    "redacts_mitre_mapping": {
+      "name": "REDACTS MITRE ATT&CK / CVSS / CWE Mapping",
+      "provider": "The Adimension",
+      "url": null,
+      "version": "2.0.0",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/The-Adimension/REDACTS/blob/main/LICENSE",
+      "attribution": "Copyright 2024-2026 The Adimension / Shehab Anwer. Mappings reference ATT&CK v14+, CWE v4.13+, CVSS v3.1.",
+      "format": "YAML",
+      "update_command": null,
+      "notes": "First-party mapping data linking detection rules to ATT&CK techniques, CWE IDs, and CVSS vectors."
+    }
+  }
+}

@@ -1,0 +1,251 @@
+# REDACTS MITRE ATT&CK + CVSS + CWE Mappings
+# Externalized from knowledge/mitre_mapping.py
+#
+# Standards-compliant classification mapping REDACTS rules to:
+#   - MITRE ATT&CK v14+ techniques
+#   - CVSS 3.1 base score vectors
+#   - CWE v4.13+ identifiers
+#   - ATT&CK tactic groupings
+#
+# Sources:
+#   - MITRE ATT&CK v14+ (https://attack.mitre.org)
+#   - CWE v4.13+ (https://cwe.mitre.org)
+#   - CVSS v3.1 (https://www.first.org/cvss/v3.1/specification-document)
+#
+# Version: 1.0.0
+
+---
+version: "1.0.0"
+schema: "mitre_mapping/v1"
+
+# MITRE ATT&CK Technique Mappings
+# rule_id -> [technique_id, technique_name]
+
+mitre_attack_map:
+ # Injection / RCE
+  SEC001: ["T1190", "Exploit Public-Facing Application"]
+  SEC002: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  SEC003: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  SEC004: ["T1552.001", "Unsecured Credentials: Credentials In Files"]
+  SEC005: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  SEC006: ["T1055.001", "Process Injection: Dynamic-link Library Injection"]
+  SEC007: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  SEC008: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  SEC009: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  SEC010: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+ # XSS
+  SEC011: ["T1189", "Drive-by Compromise"]
+  SEC012: ["T1189", "Drive-by Compromise"]
+ # File Operations
+  SEC013: ["T1083", "File and Directory Discovery"]
+  SEC014: ["T1105", "Ingress Tool Transfer"]
+  SEC015: ["T1005", "Data from Local System"]
+  SEC016: ["T1036", "Masquerading"]
+ # Deserialization
+  SEC017: ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+ # Crypto
+  SEC018: ["T1600", "Weaken Encryption"]
+  SEC019: ["T1600", "Weaken Encryption"]
+ # LDAP / XXE / SSRF
+  SEC020: ["T1190", "Exploit Public-Facing Application"]
+  SEC021: ["T1190", "Exploit Public-Facing Application"]
+  SEC022: ["T1090", "Proxy"]
+ # Webshell / Backdoor
+  WEB000: ["T1505.003", "Server Software Component: Web Shell"]
+  WEB001: ["T1505.003", "Server Software Component: Web Shell"]
+  WEB002: ["T1505.003", "Server Software Component: Web Shell"]
+  WEB003: ["T1027", "Obfuscated Files or Information"]
+  WEB004: ["T1505.003", "Server Software Component: Web Shell"]
+  WEB005: ["T1505.003", "Server Software Component: Web Shell"]
+  WEB006: ["T1027.010", "Obfuscated Files or Information: Command Obfuscation"]
+  WEB007: ["T1505.003", "Server Software Component: Web Shell"]
+  WEB008: ["T1071.001", "Application Layer Protocol: Web Protocols"]
+  WEB009: ["T1505.003", "Server Software Component: Web Shell"]
+ # IoC categories
+  IOC-FP: ["T1505.003", "Server Software Component: Web Shell"]
+  IOC-FC: ["T1505.003", "Server Software Component: Web Shell"]
+  IOC-CT: ["T1543", "Create or Modify System Process"]
+  IOC-PS: ["T1546", "Event Triggered Execution"]
+  IOC-OB: ["T1027", "Obfuscated Files or Information"]
+  IOC-CR: ["T1552.001", "Unsecured Credentials: Credentials In Files"]
+  IOC-WS: ["T1505.003", "Server Software Component: Web Shell"]
+  IOC-SC: ["T1195", "Supply Chain Compromise"]
+  IOC-IR: ["T1505.003", "Server Software Component: Web Shell"]
+ # Magika mismatches
+  MAGIKA: ["T1036.008", "Masquerading: Masquerade File Type"]
+ # Semgrep categories -> ATT&CK
+  "semgrep:sql-injection": ["T1190", "Exploit Public-Facing Application"]
+  "semgrep:command-injection": ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  "semgrep:xss": ["T1189", "Drive-by Compromise"]
+  "semgrep:path-traversal": ["T1083", "File and Directory Discovery"]
+  "semgrep:ssrf": ["T1090", "Proxy"]
+  "semgrep:deserialization": ["T1059.004", "Command and Scripting Interpreter: Unix Shell"]
+  "semgrep:xxe": ["T1190", "Exploit Public-Facing Application"]
+  "semgrep:open-redirect": ["T1189", "Drive-by Compromise"]
+  "semgrep:ldap-injection": ["T1190", "Exploit Public-Facing Application"]
+  "semgrep:hardcoded-secret": ["T1552.001", "Unsecured Credentials: Credentials In Files"]
+
+# CVSS 3.1 Base Score Mappings
+# rule_id -> {vector_string, base_score}
+
+cvss_map:
+ # CRITICAL (9.0-10.0)
+  SEC001:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 9.8
+  SEC002:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+    base_score: 10.0
+  SEC003:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+    base_score: 10.0
+  SEC004:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+    base_score: 9.1
+  SEC005:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+    base_score: 10.0
+  SEC006:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 9.8
+  SEC007:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 9.8
+  SEC017:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 9.8
+  SEC014:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:H"
+    base_score: 9.1
+  SEC016:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 9.8
+  SEC020:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
+    base_score: 9.1
+ # Webshell (CRITICAL)
+  WEB000:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+    base_score: 10.0
+  WEB001:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+    base_score: 10.0
+  WEB002:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+    base_score: 10.0
+  WEB003:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 9.8
+  WEB006:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 9.8
+ # HIGH (7.0-8.9)
+  SEC008:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 8.8
+  SEC009:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 8.8
+  SEC010:
+    vector_string: "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H"
+    base_score: 7.5
+  SEC013:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    base_score: 7.5
+  SEC021:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    base_score: 7.5
+  SEC022:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N"
+    base_score: 8.2
+ # MEDIUM (4.0-6.9)
+  SEC011:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+    base_score: 6.1
+  SEC012:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+    base_score: 6.1
+  SEC015:
+    vector_string: "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+    base_score: 6.5
+  SEC018:
+    vector_string: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    base_score: 5.9
+  SEC019:
+    vector_string: "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    base_score: 5.9
+
+# CWE Canonical Mappings
+
+cwe_map:
+  # Injection
+  SEC001: CWE-89
+  SEC002: CWE-94
+  SEC003: CWE-78
+  SEC005: CWE-78
+  SEC006: CWE-98
+  SEC007: CWE-94
+  SEC008: CWE-94
+  SEC009: CWE-94
+  SEC010: CWE-94
+  SEC017: CWE-502
+  SEC020: CWE-90
+  SEC021: CWE-611
+  SEC022: CWE-918
+  # XSS
+  SEC011: CWE-79
+  SEC012: CWE-79
+  # Credentials
+  SEC004: CWE-798
+  # File operations
+  SEC013: CWE-22
+  SEC014: CWE-22
+  SEC015: CWE-22
+  SEC016: CWE-434
+  # Crypto
+  SEC018: CWE-328
+  SEC019: CWE-330
+  # Webshell / Backdoor
+  WEB000: CWE-94
+  WEB001: CWE-94
+  WEB002: CWE-94
+  WEB003: CWE-506
+  WEB004: CWE-506
+  WEB005: CWE-506
+  WEB006: CWE-506
+  WEB007: CWE-506
+  WEB008: CWE-506
+  WEB009: CWE-506
+  # Magika
+  MAGIKA: CWE-434
+
+# ATT&CK Tactic Groupings (for matrix reporting)
+
+attack_tactics:
+  "Initial Access (TA0001)":
+    - T1190
+    - T1189
+    - T1195
+  "Execution (TA0002)":
+    - T1059.001
+    - T1059.004
+  "Persistence (TA0003)":
+    - T1505.003
+    - T1543
+    - T1546
+  "Defense Evasion (TA0005)":
+    - T1027
+    - T1027.010
+    - T1036
+    - T1036.008
+    - T1600
+  "Credential Access (TA0006)":
+    - T1552.001
+  "Discovery (TA0007)":
+    - T1083
+  "Collection (TA0009)":
+    - T1005
+  "Command and Control (TA0011)":
+    - T1071.001
+    - T1090
+    - T1105

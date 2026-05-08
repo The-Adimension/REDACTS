@@ -1,0 +1,77 @@
+[project]
+name = "redacts"
+version = "3.0.0"
+description = "REDCap Arbitrary Code Threat Scan - forensic-analysis aid for REDCap installations"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"
+authors = [{ name = "Shehab Anwer", email = "atrium@theadimension.com" }]
+keywords = ["redcap", "security", "sast", "dast", "forensics", "phi"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+# Runtime dependencies. Mirrors PYTHON_PACKAGES in static/cli/dependencies.py.
+# Edit both in lock-step; static/cli/dependencies.py remains the canonical
+# source consumed by preflight, auto_install, and the workflow.
+dependencies = [
+    "chardet>=5.0.0",
+    "magika>=0.6.0",
+    "paramiko>=3.4.0",
+    "requests>=2.31.0",
+    "py7zr>=0.20.0",
+    "rarfile>=4.1",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "tree-sitter>=0.23.0",
+    "tree-sitter-php>=0.23.0",
+    "stix2>=3.0.0",
+    "semgrep>=1.0.0",
+    "playwright>=1.51.0",
+    "pytest-asyncio>=0.24.0",
+    "keyring>=25.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "pytest-cov>=4.0",
+    "black>=24.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/The-Adimension/REDACTS"
+Repository = "https://github.com/The-Adimension/REDACTS"
+Issues = "https://github.com/The-Adimension/REDACTS/issues"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["static", "dynamic", "threat_base", "dashboard"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.black]
+line-length = 100
+target-version = ["py312", "py313", "py314"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_ignores = true
+warn_redundant_casts = true

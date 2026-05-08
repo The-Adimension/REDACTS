@@ -1,0 +1,570 @@
+# REDACTS Security Rules - Externalized from forensics/security_rules.py
+# 57 regex-based rules for PHP vulnerability detection in REDCap installations.
+#
+# Each rule has:
+#   id:             Unique identifier (SEC001-SEC099)
+#   severity:       CRITICAL / HIGH / MEDIUM / LOW / INFO
+#   category:       injection, rce, xss, credentials, etc.
+#   pattern:        Regex pattern string (compiled at load time)
+#   pattern_flags:  Regex flags (default: IGNORECASE)
+#   message:        Human-readable description
+#   cwe:            CWE identifier (optional)
+#   recommendation: Remediation guidance (optional)
+#
+# Version: 1.0.0
+# Source: REDCap changelog-disclosed CVEs, INFINITERED campaign IoCs,
+#         OWASP PHP security patterns, REDCap-specific configuration rules.
+
+---
+version: "1.0.0"
+schema: "security_rules/v1"
+
+rules:
+  # CRITICAL
+
+  - id: SEC001
+    severity: CRITICAL
+    category: injection
+    pattern: '(?:mysql_query|mysqli_query|pg_query)\s*\([^)]*\$_(?:GET|POST|REQUEST|COOKIE)'
+    pattern_flags: IGNORECASE
+    message: "Direct user input in SQL query (SQL Injection)"
+    cwe: CWE-89
+    recommendation: "Use parameterized queries or prepared statements"
+
+  - id: SEC002
+    severity: CRITICAL
+    category: rce
+    pattern: '\b(?:eval|assert)\s*\(\s*\$'
+    pattern_flags: IGNORECASE
+    message: "Dynamic code execution with variable input"
+    cwe: CWE-94
+    recommendation: "Remove eval/assert with user-controlled input"
+
+  - id: SEC003
+    severity: CRITICAL
+    category: rce
+    pattern: '(?<!->)(?<!::)\b(?:exec|system|passthru|shell_exec|popen|proc_open)\s*\(\s*\$'
+    pattern_flags: IGNORECASE
+    message: "OS command injection risk - variable in command execution"
+    cwe: CWE-78
+    recommendation: "Use escapeshellarg/escapeshellcmd or avoid dynamic commands"
+
+  - id: SEC004
+    severity: CRITICAL
+    category: credentials
+    pattern: '(?:password|passwd|secret_key|api_key|private_key|auth_token)\s*[=:]\s*[''"][A-Za-z0-9+/=]{8,}[''"]'
+    pattern_flags: IGNORECASE
+    message: "Hardcoded credential or secret detected"
+    cwe: CWE-798
+    recommendation: "Move secrets to environment variables or secure vault"
+
+  # HIGH
+
+  - id: SEC010
+    severity: HIGH
+    category: xss
+    pattern: 'echo\s+\$_(?:GET|POST|REQUEST|COOKIE)\s*\['
+    pattern_flags: IGNORECASE
+    message: "Reflected XSS - echoing user input without sanitization"
+    cwe: CWE-79
+    recommendation: "Use htmlspecialchars() or htmlentities()"
+
+  - id: SEC011
+    severity: HIGH
+    category: file_inclusion
+    pattern: '(?:include|require)(?:_once)?\s*[\(]?\s*\$_(?:GET|POST|REQUEST)'
+    pattern_flags: IGNORECASE
+    message: "Local/Remote File Inclusion via user input"
+    cwe: CWE-98
+    recommendation: "Never use user input in include/require paths"
+
+  - id: SEC012
+    severity: HIGH
+    category: deserialization
+    pattern: '\bunserialize\s*\(\s*\$'
+    pattern_flags: IGNORECASE
+    message: "Unsafe deserialization of variable data"
+    cwe: CWE-502
+    recommendation: "Use json_decode instead or validate before unserialize"
+
+  - id: SEC013
+    severity: HIGH
+    category: upload
+    pattern: 'move_uploaded_file\s*\(.*?\$_(?:FILES|GET|POST)'
+    pattern_flags: IGNORECASE
+    message: "File upload handling - verify file type validation"
+    cwe: CWE-434
+    recommendation: "Validate file type, extension, MIME, and content"
+
+  - id: SEC014
+    severity: HIGH
+    category: crypto
+    pattern: '\b(?:md5|sha1)\s*\(\s*\$.*password'
+    pattern_flags: IGNORECASE
+    message: "Weak hashing for password storage"
+    cwe: CWE-328
+    recommendation: "Use password_hash() with PASSWORD_BCRYPT or PASSWORD_ARGON2ID"
+
+  # MEDIUM
+
+  - id: SEC020
+    severity: MEDIUM
+    category: injection
+    pattern: '\$_(?:GET|POST|REQUEST|COOKIE)\s*\[.*?\](?!.*(?:htmlspecialchars|htmlentities|filter_|intval|escape|sanitize))'
+    pattern_flags: IGNORECASE
+    message: "User input used without visible sanitization"
+    cwe: CWE-20
+    recommendation: "Always sanitize/validate user input"
+
+  - id: SEC021
+    severity: MEDIUM
+    category: session
+    pattern: 'session_start\s*\(\s*\)(?!.*session_regenerate_id)'
+    pattern_flags: IGNORECASE
+    message: "Session started without regeneration (fixation risk)"
+    cwe: CWE-384
+    recommendation: "Call session_regenerate_id() after authentication"
+
+  - id: SEC022
+    severity: MEDIUM
+    category: config
+    pattern: '(?:display_errors|error_reporting)\s*[=(]\s*(?:1|true|E_ALL|on)'
+    pattern_flags: IGNORECASE
+    message: "Error display enabled (information disclosure)"
+    cwe: CWE-209
+    recommendation: "Disable display_errors in production"
+
+  - id: SEC023
+    severity: MEDIUM
+    category: deprecated
+    pattern: '\b(?:mysql_connect|mysql_query|mysql_fetch|mysql_select_db|ereg|split)\s*\('
+    pattern_flags: IGNORECASE
+    message: "Deprecated PHP function usage"
+    cwe: CWE-477
+    recommendation: "Use modern equivalents (mysqli, PDO, preg_*)"
+
+  # LOW
+
+  - id: SEC030
+    severity: LOW
+    category: debug
+    pattern: '\b(?:var_dump|print_r|debug_print_backtrace|debug_zval_dump)\s*\('
+    pattern_flags: IGNORECASE
+    message: "Debug function in code"
+    recommendation: "Remove debug functions from production code"
+
+  - id: SEC031
+    severity: LOW
+    category: header
+    pattern: 'header\s*\(\s*[''"]X-Powered-By'
+    pattern_flags: IGNORECASE
+    message: "Server information disclosure via header"
+    recommendation: "Remove X-Powered-By headers"
+
+  # INFO - Backdoor indicators
+
+  - id: SEC040
+    severity: INFO
+    category: backdoor
+    pattern: '\b(?:base64_decode|gzinflate|gzuncompress|str_rot13)\s*\(\s*(?:base64_decode|gzinflate)'
+    pattern_flags: IGNORECASE
+    message: "Nested encoding/compression (potential obfuscation/backdoor)"
+    cwe: CWE-506
+    recommendation: "Investigate - common backdoor technique"
+
+  - id: SEC041
+    severity: INFO
+    category: backdoor
+    pattern: '(?:preg_replace|preg_replace_callback)\s*\([^)]*[''"].*?/e[''"]'
+    pattern_flags: IGNORECASE
+    message: "preg_replace with /e modifier (code execution)"
+    cwe: CWE-94
+    recommendation: "Use preg_replace_callback instead"
+
+  # INFINITERED Campaign IoC Rules
+
+  - id: SEC060
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'REDCAP[_-]TOKEN|redcap[_-]token'
+    pattern_flags: null
+    message: "INFINITERED IoC: REDCAP-TOKEN string detected"
+    cwe: CWE-506
+    recommendation: "Known INFINITERED malware indicator - investigate immediately"
+
+  - id: SEC061
+    severity: CRITICAL
+    category: infinitered
+    pattern: '\beval\s*\(\s*(?:gzinflate|gzuncompress)\s*\(\s*base64_decode'
+    pattern_flags: IGNORECASE
+    message: "INFINITERED IoC: eval(gzinflate(base64_decode())) chain"
+    cwe: CWE-506
+    recommendation: "Known INFINITERED payload delivery pattern - isolate and analyze"
+
+  - id: SEC062
+    severity: HIGH
+    category: infinitered
+    pattern: 'redcap\.db|redcap_\.db'
+    pattern_flags: IGNORECASE
+    message: "INFINITERED IoC: redcap.db persistence artifact reference"
+    cwe: CWE-506
+    recommendation: "SQLite database used for INFINITERED C2/persistence - investigate"
+
+  - id: SEC063
+    severity: HIGH
+    category: debug_tool
+    pattern: '\bKint::|\\Kint\\|kint-php|(?<![a-zA-Z_])d\(\s*\$|Kint\\Renderer'
+    pattern_flags: IGNORECASE
+    message: "Kint debug tool detected in codebase"
+    cwe: CWE-489
+    recommendation: "Remove debug tools from production - information disclosure risk"
+
+  - id: SEC064
+    severity: CRITICAL
+    category: info_disclosure
+    pattern: 'filp[/\\]whoops|PrettyPageHandler|Whoops\\Run|new\s+Whoops'
+    pattern_flags: IGNORECASE
+    message: "Whoops error handler detected (information disclosure)"
+    cwe: CWE-209
+    recommendation: "Remove Whoops from production - exposes stack traces, env vars, credentials"
+
+  - id: SEC065
+    severity: MEDIUM
+    category: config_exposure
+    pattern: 'Dotenv\\Dotenv|vlucas[/\\]phpdotenv|Dotenv::create'
+    pattern_flags: IGNORECASE
+    message: "phpdotenv detected - anomalous for REDCap (uses database.php)"
+    cwe: CWE-538
+    recommendation: "REDCap uses database.php for config - .env may indicate tampering"
+
+  - id: SEC066
+    severity: HIGH
+    category: infinitered
+    pattern: 'SQLite format 3|PRAGMA\s+journal_mode|sqlite_master'
+    pattern_flags: IGNORECASE
+    message: "SQLite operations detected - check for INFINITERED redcap.db artifact"
+    cwe: CWE-506
+    recommendation: "Unexpected SQLite usage may indicate INFINITERED persistence layer"
+
+  - id: SEC067
+    severity: CRITICAL
+    category: debug_tool
+    pattern: 'psy[/\\]psysh|Psy\\Shell|\\PsySH|psysh\.php|Psy\\Configuration'
+    pattern_flags: IGNORECASE
+    message: "PsySH interactive PHP shell detected in codebase"
+    cwe: CWE-489
+    recommendation: "Remove PsySH from production - provides full interactive PHP REPL access"
+
+  - id: SEC068
+    severity: HIGH
+    category: debug_tool
+    pattern: 'Symfony\\Component\\VarDumper|symfony[/\\]var-dumper|\bdump\s*\(\s*\$'
+    pattern_flags: IGNORECASE
+    message: "Symfony VarDumper detected - debug tool in codebase"
+    cwe: CWE-489
+    recommendation: "Remove VarDumper from production - information disclosure risk"
+
+  - id: SEC069
+    severity: HIGH
+    category: debug_tool
+    pattern: 'Symfony\\Component\\Debug\\Debug|Debug::enable\(\)|Symfony\\Component\\Debug\\ErrorHandler'
+    pattern_flags: IGNORECASE
+    message: "Symfony Debug component detected in production code"
+    cwe: CWE-489
+    recommendation: "Symfony Debug is deprecated and exposes stack traces - remove from production"
+
+  # SEC070-SEC079: REDCap Changelog-Disclosed Vulnerability Detection
+  # Sourced from REDCap release notes v15.9.2 through v16.1.3
+  # All vulnerabilities confirmed present in v15.7.4 baseline
+
+  - id: SEC070
+    severity: CRITICAL
+    category: deserialization_rce
+    pattern: 'unserialize\s*\(\s*(?:decrypt|base64_decode)?\s*\(?\s*\$_COOKIE'
+    pattern_flags: IGNORECASE
+    message: "Cookie-based PHP deserialization RCE (REDCap CVE disclosed 16.1.1)"
+    cwe: CWE-502
+    recommendation: >-
+      CVE: Cookie manipulation enables RCE via unserialize on CDIS/Duo pages (13.8.1+).
+      Replace unserialize() with json_decode() for cookie data
+
+  - id: SEC071
+    severity: CRITICAL
+    category: rce_logic
+    pattern: '\beval\s*\(\s*[''"]?\s*\$(?:result|eval_string|formula|actualFormula|calc)'
+    pattern_flags: IGNORECASE
+    message: "RCE via logic/calculation eval (REDCap CVE disclosed 16.1.0 - ALL versions)"
+    cwe: CWE-94
+    recommendation: >-
+      CVE: Manipulating calculations, branching logic, DQ rules, or report filters
+      enables arbitrary PHP code execution. Use a safe math parser instead of eval()
+
+  - id: SEC072
+    severity: CRITICAL
+    category: rce_logic
+    pattern: '\beval\s*\(\s*[''"][^''"]*\s*[''"]?\s*\.\s*\$'
+    pattern_flags: IGNORECASE
+    message: "Eval with string concatenation - dynamic code assembly (RCE risk)"
+    cwe: CWE-94
+    recommendation: >-
+      CVE (16.1.0): Dynamic eval via string concatenation enables RCE.
+      Refactor to use safe expression evaluation without eval()
+
+  - id: SEC073
+    severity: HIGH
+    category: injection
+    pattern: '(?:db_query|mysqli?_query|query)\s*\([^)]*\$_(?:GET|POST|REQUEST).*(?:DataQuality|data_quality|dq_rule)'
+    pattern_flags: IGNORECASE
+    message: "SQL injection in Data Quality module (REDCap CVE disclosed 16.1.1)"
+    cwe: CWE-89
+    recommendation: >-
+      CVE: HTTP request manipulation on Data Quality pages enables SQL injection.
+      Use parameterized queries for all DQ module database operations
+
+  - id: SEC074
+    severity: MEDIUM
+    category: path_traversal
+    pattern: '(?:file_get_contents|fopen|readfile|include|require)\s*\(.*\$.*(?:report|summarize|ai_|translate)'
+    pattern_flags: IGNORECASE
+    message: "Path traversal risk in AI/report feature (REDCap CVE disclosed 16.1.1)"
+    cwe: CWE-22
+    recommendation: >-
+      CVE: AI 'Summarize Data' feature allows limited path traversal on reports (15.0.0+).
+      Validate and canonicalize all file paths before access
+
+  - id: SEC075
+    severity: HIGH
+    category: xss
+    pattern: '(?:echo|print)\s+.*(?:messenger|thread|message_body|conversation)(?!.*htmlspecialchars)'
+    pattern_flags: IGNORECASE
+    message: "Stored XSS risk in Messenger output (REDCap CVE disclosed 16.1.1)"
+    cwe: CWE-79
+    recommendation: >-
+      CVE: Stored XSS via REDCap Messenger endpoints (all versions).
+      Apply htmlspecialchars() to all messenger content output
+
+  - id: SEC076
+    severity: HIGH
+    category: xss
+    pattern: '@INLINE\b.*(?:pdf|PDF|action_tag)|(?:pdf|PDF).*@INLINE'
+    pattern_flags: IGNORECASE
+    message: "PDF JavaScript injection via @INLINE action tag (REDCap CVE disclosed 16.0.9)"
+    cwe: CWE-79
+    recommendation: >-
+      CVE: Reflected XSS via JavaScript embedded in PDF through INLINE action tag.
+      Sanitize PDF content and strip JavaScript from inline-rendered PDFs
+
+  - id: SEC077
+    severity: HIGH
+    category: authorization
+    pattern: 'getUserRights\s*\('
+    pattern_flags: IGNORECASE
+    message: "getUserRights() usage - vulnerable to empty array bypass (16.0.0-16.0.3)"
+    cwe: CWE-285
+    recommendation: >-
+      CVE (16.0.4): getUserRights() can return empty array, causing External Modules,
+      hooks, and plugins to treat users as having no restrictions. Validate return is non-empty
+
+  - id: SEC078
+    severity: HIGH
+    category: authorization
+    pattern: '(?:file_export|edoc|download).*(?:No\s*Access|access_level|user_rights)'
+    pattern_flags: IGNORECASE
+    message: "File export access control check (REDCap CVE disclosed 16.0.9)"
+    cwe: CWE-285
+    recommendation: >-
+      CVE: File/document exports for file-type fields bypass 'No Access' rights check.
+      Verify export APIs enforce field-level access controls
+
+  - id: SEC079
+    severity: HIGH
+    category: injection
+    pattern: '(?:mail|sendmail|send_email|Email::send)\s*\(.*\$_(?:GET|POST|REQUEST).*(?:from|sender)'
+    pattern_flags: IGNORECASE
+    message: "Email From address injection via AJAX endpoint (REDCap CVE disclosed 16.1.2)"
+    cwe: CWE-20
+    recommendation: >-
+      CVE: AJAX endpoint allows sending emails with arbitrary From address.
+      Validate From address against authenticated project users
+
+  # SEC080-SEC099: Configuration Persistence & PHP Runtime Detection
+
+  - id: SEC080
+    severity: CRITICAL
+    category: persistence
+    pattern: 'php_value\s+auto_prepend_file'
+    pattern_flags: IGNORECASE
+    message: "auto_prepend_file directive - persistent invisible code execution on every request"
+    cwe: CWE-94
+    recommendation: "CONCLUSIVE persistence indicator. Identify the prepended file immediately."
+
+  - id: SEC081
+    severity: CRITICAL
+    category: persistence
+    pattern: 'php_value\s+auto_append_file'
+    pattern_flags: IGNORECASE
+    message: "auto_append_file directive - persistent code execution after every request"
+    cwe: CWE-94
+    recommendation: "CONCLUSIVE persistence indicator. The appended file executes after every page."
+
+  - id: SEC082
+    severity: CRITICAL
+    category: persistence
+    pattern: 'auto_prepend_file\s*='
+    pattern_flags: IGNORECASE
+    message: "auto_prepend_file in .user.ini - invisible persistent backdoor via PHP-FPM"
+    cwe: CWE-94
+    recommendation: "CONCLUSIVE. REDCap ships NO .user.ini files. This is persistence via PHP runtime."
+
+  - id: SEC083
+    severity: CRITICAL
+    category: rfi
+    pattern: 'allow_url_include\s*=\s*(?:1|on|true)'
+    pattern_flags: IGNORECASE
+    message: "allow_url_include enabled - remote file inclusion possible"
+    cwe: CWE-98
+    recommendation: "CONCLUSIVE. Allows include('http://evil.com/shell.php'). Must be Off."
+
+  - id: SEC084
+    severity: HIGH
+    category: persistence
+    pattern: '\bstream_wrapper_register\s*\('
+    pattern_flags: IGNORECASE
+    message: "Custom stream wrapper registration - potential protocol hijacking"
+    cwe: CWE-94
+    recommendation: "REDCap should not register custom stream wrappers. Investigate purpose."
+
+  - id: SEC085
+    severity: HIGH
+    category: persistence
+    pattern: '\b(?:set_include_path|ini_set\s*\(\s*[''"]include_path)\s*\('
+    pattern_flags: IGNORECASE
+    message: "include_path manipulation - potential directory shadow attack"
+    cwe: CWE-426
+    recommendation: "Modified include_path can cause PHP to load attacker files instead of legitimate ones."
+
+  - id: SEC086
+    severity: HIGH
+    category: persistence
+    pattern: '\bdl\s*\(\s*[''"]'
+    pattern_flags: IGNORECASE
+    message: "Dynamic PHP extension loading via dl() - should never appear in web code"
+    cwe: CWE-94
+    recommendation: "dl() loads arbitrary .so/.dll extensions. Must be disabled in production."
+
+  - id: SEC087
+    severity: HIGH
+    category: config_tamper
+    pattern: 'AddHandler\s+.*php'
+    pattern_flags: IGNORECASE
+    message: "AddHandler enabling PHP execution - may allow PHP in upload directories"
+    cwe: CWE-434
+    recommendation: "Check if this enables PHP execution in upload/temp directories."
+
+  - id: SEC088
+    severity: HIGH
+    category: config_tamper
+    pattern: 'SetHandler\s+.*php'
+    pattern_flags: IGNORECASE
+    message: "SetHandler enabling PHP execution in directory"
+    cwe: CWE-434
+    recommendation: "Verify this doesn't enable PHP execution where uploads are stored."
+
+  - id: SEC089
+    severity: MEDIUM
+    category: config_tamper
+    pattern: 'ProxyPass\s+'
+    pattern_flags: IGNORECASE
+    message: "ProxyPass directive - potential reverse proxy to external C2"
+    cwe: CWE-441
+    recommendation: "Verify this doesn't proxy requests to attacker-controlled servers."
+
+  - id: SEC090
+    severity: HIGH
+    category: config_tamper
+    pattern: 'RewriteRule\s+.*https?://'
+    pattern_flags: IGNORECASE
+    message: "RewriteRule redirecting to external URL - potential C2 or phishing"
+    cwe: CWE-601
+    recommendation: "External redirects in .htaccess may redirect users to phishing clones."
+
+  - id: SEC091
+    severity: HIGH
+    category: config_tamper
+    pattern: 'php_flag\s+engine\s+on'
+    pattern_flags: IGNORECASE
+    message: "PHP engine explicitly enabled - dangerous in upload/temp directories"
+    cwe: CWE-434
+    recommendation: "edocs/temp directories should have 'php_flag engine off'."
+
+  - id: SEC092
+    severity: HIGH
+    category: config_tamper
+    pattern: 'disable_functions\s*='
+    pattern_flags: IGNORECASE
+    message: "disable_functions override - potentially removing security restrictions"
+    cwe: CWE-693
+    recommendation: "Overriding disable_functions in .user.ini can re-enable exec/system/etc."
+
+  - id: SEC093
+    severity: CRITICAL
+    category: injection
+    pattern: '\bINTO\s+(?:OUTFILE|DUMPFILE)\s'
+    pattern_flags: IGNORECASE
+    message: "MySQL INTO OUTFILE/DUMPFILE - writes files to disk from SQL query"
+    cwe: CWE-89
+    recommendation: "Attacker with DB access can write webshells directly via SQL. Investigate context."
+
+  - id: SEC094
+    severity: HIGH
+    category: backdoor
+    pattern: '\bcreate_function\s*\('
+    pattern_flags: IGNORECASE
+    message: "create_function() usage - deprecated, commonly used in backdoors"
+    cwe: CWE-94
+    recommendation: "create_function() is deprecated and executes arbitrary code. Use closures instead."
+
+  - id: SEC095
+    severity: HIGH
+    category: backdoor
+    pattern: '\$\{?\$\w+\}?\s*\('
+    pattern_flags: IGNORECASE
+    message: "Variable function call - can invoke arbitrary functions dynamically"
+    cwe: CWE-94
+    recommendation: "Variable function calls like $$func() can disguise calls to eval/exec/system."
+
+  - id: SEC096
+    severity: MEDIUM
+    category: config_tamper
+    pattern: 'open_basedir\s*='
+    pattern_flags: IGNORECASE
+    message: "open_basedir override - weakening filesystem access restrictions"
+    cwe: CWE-693
+    recommendation: "Overriding open_basedir can allow PHP to access files outside the webroot."
+
+  - id: SEC097
+    severity: HIGH
+    category: supply_chain
+    pattern: '["\u0027]post-(?:install|update)-cmd["\u0027]'
+    pattern_flags: IGNORECASE
+    message: "Composer post-install/update script - executes during dependency installation"
+    cwe: CWE-506
+    recommendation: "Post-install scripts in composer.json can execute arbitrary code during updates."
+
+  - id: SEC098
+    severity: HIGH
+    category: webshell
+    pattern: 'file_put_contents\s*\([^)]*\.php'
+    pattern_flags: IGNORECASE
+    message: "file_put_contents writing .php file - potential webshell dropper"
+    cwe: CWE-94
+    recommendation: "Writing PHP files dynamically is a common webshell deployment technique."
+
+  - id: SEC099
+    severity: CRITICAL
+    category: obfuscation
+    pattern: '(?:str_rot13|gzinflate|gzuncompress|rawurldecode)\s*\(\s*(?:str_rot13|gzinflate|gzuncompress|rawurldecode|base64_decode)\s*\('
+    pattern_flags: IGNORECASE
+    message: "Multi-layer obfuscation chain - strong indicator of packed malware"
+    cwe: CWE-506
+    recommendation: "Nested encoding/compression chains are the hallmark of PHP backdoors."

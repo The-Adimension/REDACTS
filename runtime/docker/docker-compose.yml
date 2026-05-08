@@ -1,0 +1,46 @@
+# REDACTS Dynamic Analysis - Docker Compose
+# Usage: docker compose -f runtime/docker/docker-compose.yml up
+
+services:
+  redcap-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: redacts_root
+      MYSQL_DATABASE: redcap
+      MYSQL_USER: redcap
+      MYSQL_PASSWORD: redcap
+    volumes:
+      - redcap-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run/mysqld
+
+  redcap-web:
+    build:
+      context: ../..
+      dockerfile: dynamic/Dockerfile.dast
+    restart: unless-stopped
+    depends_on:
+      redcap-db:
+        condition: service_healthy
+    ports:
+      - "${REDACTS_DAST_PORT:-8585}:80"
+    environment:
+      REDCAP_DB_HOST: redcap-db
+      REDCAP_DB_NAME: redcap
+      REDCAP_DB_USER: redcap
+      REDCAP_DB_PASS: redcap
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  redcap-db:

@@ -1,0 +1,227 @@
+# REDACTS REDCap Baseline Structure
+# Externalized from knowledge/ioc_database.py
+#
+# Defines the known-good structure of a standard REDCap installation.
+# Used by forensic analysis to detect:
+#   - Unexpected files/directories
+#   - database.php poisoning (extra code beyond 5 allowed variables)
+#   - Injected hook functions not in the legitimate whitelist
+#   - Configuration persistence via .htaccess / .user.ini directives
+#
+# Sources:
+#   - REDCap consortium documentation
+#   - Post-compromise forensic analysis of INFINITERED campaign indicators
+#
+# Version: 1.0.0
+
+---
+version: "1.1.0"
+schema: "redcap_baseline/v1"
+
+# Known Top-Level Directories & Files
+# Cross-referenced against REDCap v15.7.4 source tree.
+# Casing matches the actual filesystem (case-sensitive on Linux).
+
+known_directories:
+  # Core application modules (present in v15.7.4)
+  - AI
+  - API
+  - Authentication
+  - Calendar
+  - CDIS
+  - Classes
+  - Config
+  - ControlCenter
+  - Controllers
+  - DataEntry
+  - DataExport
+  - DataQuality
+  - Design
+  - DynamicDataPull
+  - ExternalLinks
+  - ExternalModules
+  - Graphical
+  - Help
+  - Home
+  - LanguageUpdater
+  - Libraries
+  - Locking
+  - Logging
+  - Messenger
+  - MobileApp
+  - MultiLanguage
+  - MyCap
+  - MyCapMobileApp
+  - Plugins
+  - Profile
+  - ProjectGeneral
+  - ProjectSetup
+  - PubMatch
+  - Randomization
+  - Resources
+  - Rewards
+  - SendIt
+  - SharedLibrary
+  - Surveys
+  - Tests
+  - ToDoList
+  - twoFA
+  - UnitTests
+  - UserRights
+  - vendor
+  - Views
+
+  # Runtime-created directories (not in source tree but expected at runtime)
+  - edocs
+  - modules
+  - temp
+  - "redcap_v{version}"
+
+  # Top-level entry-point files
+  - cron.php
+  - index.php
+  - redcap_connect.php
+
+# Known-Good Structure Definition
+
+known_good_structure:
+  description: "Standard REDCap installation file structure"
+
+  critical_files:
+    database.php:
+      expected_content: "EXACTLY <?php and 5 variable assignments: $hostname, $db, $username, $password, $salt"
+      max_variables: 5
+      allowed_variables:
+        - hostname
+        - db
+        - username
+        - password
+        - salt
+      forbidden_patterns:
+        - "function "
+        - "class "
+        - "include"
+        - "require"
+        - "eval"
+        - "exec"
+        - "system"
+        - "passthru"
+        - "shell_exec"
+        - "popen"
+        - "proc_open"
+        - "base64_decode"
+        - "gzinflate"
+
+    cron.php:
+      description: "REDCap cron entry point - hash must match distribution"
+      comparison_type: hash
+
+    index.php:
+      description: "Main entry point - hash must match distribution"
+      comparison_type: hash
+
+    redcap_connect.php:
+      description: "Bootstrap connector - hash must match distribution"
+      comparison_type: hash
+
+  critical_directories:
+    edocs:
+      must_not_contain:
+        - ".php"
+        - ".phtml"
+        - ".phar"
+        - ".php5"
+        - ".php7"
+        - ".inc"
+      should_have_htaccess: true
+      htaccess_must_contain: "php_flag engine off"
+
+    temp:
+      must_not_contain:
+        - ".php"
+        - ".phtml"
+        - ".phar"
+
+    modules:
+      description: "External Modules directory - each module has config.json"
+
+# Legitimate Hook Function Names
+# ONLY these function names should appear in hook_functions.php.
+# Any other function name is a potential injection.
+
+hook_function_names:
+  - redcap_every_page_top
+  - redcap_every_page_before_render
+  - redcap_data_entry_form
+  - redcap_data_entry_form_top
+  - redcap_survey_page
+  - redcap_survey_page_top
+  - redcap_survey_complete
+  - redcap_survey_acknowledgement_page
+  - redcap_save_record
+  - redcap_add_edit_records_page
+  - redcap_custom_verify
+  - redcap_custom_verify_username
+  - redcap_user_rights
+  - redcap_module_system_enable
+  - redcap_module_system_disable
+  - redcap_module_project_enable
+  - redcap_module_project_disable
+  - redcap_module_configure_button_display
+  - redcap_module_save_configuration
+  - redcap_module_link_check_display
+  - redcap_email
+  - redcap_pdf
+  - redcap_control_center
+  - redcap_project_home_page
+
+# database.php Validation Rules
+
+database_php_validation:
+  allowed_variables:
+    - hostname
+    - db
+    - username
+    - password
+    - salt
+
+  # Regex to match valid variable assignments in database.php
+  # Applied with re.MULTILINE
+  validation_regex: '^\s*\$(hostname|db|username|password|salt)\s*=\s*'
+
+  # Forbidden patterns - if ANY match, database.php is compromised
+  # Each compiled with re.IGNORECASE
+  forbidden_patterns:
+    - pattern: '\bfunction\s+\w+\s*\('
+      flags: IGNORECASE
+      description: "Function declaration"
+    - pattern: '\bclass\s+\w+'
+      flags: IGNORECASE
+      description: "Class declaration"
+    - pattern: '\b(?:include|require)(?:_once)?\s*[\(''\"]'
+      flags: IGNORECASE
+      description: "Include/require statement"
+    - pattern: '\b(?:eval|exec|system|passthru|shell_exec|popen|proc_open)\s*\('
+      flags: IGNORECASE
+      description: "Dangerous function execution"
+    - pattern: '\bbase64_decode\s*\('
+      flags: IGNORECASE
+      description: "Base64 decode call"
+    - pattern: '\bgzinflate\s*\('
+      flags: IGNORECASE
+      description: "Gzip inflate call"
+    - pattern: '\bfile_get_contents\s*\('
+      flags: IGNORECASE
+      description: "Remote file read"
+    - pattern: '\bcurl_exec\s*\('
+      flags: IGNORECASE
+      description: "cURL execution"
+    - pattern: '\bstream_wrapper_register\s*\('
+      flags: IGNORECASE
+      description: "Stream wrapper manipulation"
+    - pattern: '\bini_set\s*\('
+      flags: IGNORECASE
+      description: "Runtime PHP config change"
+    - pattern: '\bset_include_path\s*\('
+      flags: IGNORECASE
+      description: "Include path manipulation"

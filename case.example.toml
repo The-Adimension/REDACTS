@@ -1,0 +1,211 @@
+# REDACTS - Case Contract
+# Copy this file to `case.toml` (next to `main.py`) and adapt every
+# placeholder marked with <<...>> to your case before running REDACTS.
+#
+# REDACTS reads ONLY this file. There are no environment-variable
+# overrides, no `.env` files, and no global config. If you need to
+# rotate a secret, edit this file. See the README and USER_GUIDE for
+# field-level documentation.
+#
+# Hard rules enforced at startup (refusal = exit code 2):
+#   * `schema_version = 2` - required, top of file.
+#   * Every image in `[dynamic.images.*]` must carry a real
+#     `sha256:<64-hex>` digest. Tag-only references are rejected.
+#   * Every password-class field in `[dynamic.credentials]` must be
+#     >=16 chars and use >=3 of {lower, upper, digit, symbol}.
+#   * Local files in `[inputs.*]` must declare a matching `sha256`.
+#   * `[runtime.nix].nixpkgs_rev` must be a 40-hex commit SHA.
+#   * Any host referenced by a URL elsewhere in the contract must
+#     appear in `[security].ssrf_allowlist`.
+
+schema_version = 2
+
+[case]
+id = "EXAMPLE-CASE-0001"
+analyst = "<<Your Name>>"
+organization = "<<Your Organization>>"
+date = "2026-05-04"
+description = "Example REDACTS case - replace before running."
+
+[paths]
+# Use "." to anchor to the directory containing this file.
+workspace_root = "."
+
+# Inputs
+# `path` is resolved relative to this file. If the path points at a
+# real local file, `sha256` is REQUIRED and is verified at load time.
+# Compute one with:
+#   python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" path/to/file
+
+[inputs.target]
+path = "inputs/<<target.zip>>"
+sha256 = "<<64-hex sha256 of the target ZIP>>"
+
+[inputs.reference]
+path = "inputs/<<reference.zip>>"
+sha256 = "<<64-hex sha256 of the reference ZIP>>"
+
+# Optional - uncomment if you have an upgrade package to scan.
+# [inputs.upgrade_package]
+# path = "inputs/<<upgrade.zip>>"
+# sha256 = "<<64-hex sha256 of the upgrade ZIP>>"
+
+# -- Static analysis
+[static]
+enabled = true
+scanners = ["regex", "yara", "trivy", "semgrep"]
+formats = ["html", "json", "markdown", "sarif"]
+severity_gate = "high"           # info | low | medium | high | critical
+max_total_files = 50000
+parallel_workers = 4
+global_timeout_seconds = 3600
+
+# -- Dynamic analysis (DAST) ----
+# Set `enabled = false` for static-only runs. When enabled, every
+# image below MUST carry a real registry digest - tag pins are
+# rejected for reproducibility/supply-chain reasons.
+
+[dynamic]
+enabled = false
+runtime = "docker"               # docker | podman | nix
+suites = ["export", "admin", "upgrade"]
+port = 8585
+suite_timeout = 600
+keep_stack = false
+stack_only = false
+
+[dynamic.images.mariadb]
+registry = "docker.io"
+repo = "library/mariadb"
+tag = "10.11"
+digest = "sha256:<<64-hex digest from `docker pull mariadb:10.11`>>"
+
+[dynamic.images.php]
+registry = "docker.io"
+repo = "library/php"
+tag = "8.3-apache"
+digest = "sha256:<<64-hex digest from `docker pull php:8.3-apache`>>"
+
+[dynamic.images.playwright]
+registry = "mcr.microsoft.com"
+repo = "playwright"
+tag = "v1.51.0-noble"
+digest = "sha256:<<64-hex digest from `docker pull mcr.microsoft.com/playwright:v1.51.0-noble`>>"
+
+[dynamic.images.sandbox]
+registry = "docker.io"
+repo = "library/php"
+tag = "8.2-cli-alpine"
+digest = "sha256:<<64-hex digest from `docker pull php:8.2-cli-alpine`>>"
+
+# -- Credentials (local-only test stack) ---------
+# These ARE NOT shared with any external service - they are the
+# initial credentials minted into the disposable REDCap stack that
+# DAST tests against. Rotate per case. Each password-class field
+# requires >=16 chars and >=3 of {lower/upper/digit/symbol}.
+
+[dynamic.credentials]
+admin_user = "site_admin"
+admin_password = "<<Strong!Password-16+chars>>"
+admin_email = "admin@example.invalid"
+db_root_password = "<<Strong!RootPassword-16+chars>>"
+db_user = "redcap"
+db_password = "<<Strong!DbPassword-16+chars>>"
+salt = "<<Strong!Salt-16+chars>>"
+
+[dynamic.network]
+base_url = "http://localhost:8585"
+internal_hosts = ["localhost", "127.0.0.1", "::1"]
+xdebug_mode = "trace"             # off | develop | debug | trace | coverage
+
+[dynamic.playwright]
+chromium_executable = ""          # empty = use the bundled one
+chromium_args = []
+node_version = "20"
+
+# -- Threat-base (CVE/CWE/ATT&CK feeds) ----------
+[threat_base]
+offline_mode = true               # true = use only the cached bundles
+allow_stale = true
+ttl_hours = 168
+
+[threat_base.sources.cwe]
+url = "https://cwe.mitre.org/data/csv/1000.csv.zip"
+sha256 = ""                       # leave empty only on first sync; pin afterwards
+
+[threat_base.sources.nvd]
+base_url = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+api_key = ""                      # optional - raises NVD rate limit if set
+
+[threat_base.sources.attack_stix]
+url = "https://github.com/mitre-attack/attack-stix-data/raw/master/enterprise-attack/enterprise-attack.json"
+sha256 = ""
+
+[[threat_base.sources.yara_rules]]
+url = "https://raw.githubusercontent.com/Neo23x0/signature-base/master/yara/expl_php.yar"
+sha256 = ""
+
+# -- Tool pins (Trivy, YARA, Semgrep, Repomix, Magika) -------------
+# REDACTS auto-installs Trivy and YARA from these URLs into
+# `<paths.tools_root>/`. Auto-install refuses to download unless the
+# current platform has a real 64-hex SHA-256 pin in `sha256_table`.
+# Empty or placeholder values are templates only.
+
+[tools.trivy]
+version = "0.58.2"
+url_template = "https://github.com/aquasecurity/trivy/releases/download/v{version}/trivy_{version}_{os}-{arch}.zip"
+sha256_table = { "windows-64bit" = "", "linux-64bit" = "", "darwin-64bit" = "" }
+
+[tools.yara]
+version = "4.5.2"
+url_template = "https://github.com/VirusTotal/yara/releases/download/v{version}/yara-v{version}-2326-{os}.zip"
+sha256_table = { "win64" = "" }
+
+[tools.semgrep]
+version = "1.85.0"
+
+[tools.repomix]
+version = "0.2.31"
+
+[tools.magika]
+version = "0.5.1"
+
+# -- Nix runtime (only used when `[dynamic].runtime = "nix"`) ------
+[runtime.nix]
+flake_ref = "github:NixOS/nixpkgs/nixos-unstable"
+nixpkgs_rev = "0123456789abcdef0123456789abcdef01234567"   # 40-hex commit SHA
+php_attr = "php83"
+mariadb_attr = "mariadb_1011"
+chromium_attr = "chromium"
+playwright_browsers = "playwright-driver.browsers"
+
+# -- Security boundary ----------
+# `network_disabled = true` blocks all outbound HTTP from the host
+# process (preflight, auto-install, and threat-base updater all
+# refuse to make a request). Use this for offline / forensic /
+# air-gapped runs.
+#
+# `ssrf_allowlist` is the runtime ACL for any outbound HTTP that IS
+# allowed - every host present in a URL elsewhere in this file MUST
+# appear here, and any host NOT here is rejected before the request.
+
+[security]
+network_disabled = false
+ssrf_allowlist = [
+    "cwe.mitre.org",
+    "services.nvd.nist.gov",
+    "github.com",
+    "raw.githubusercontent.com",
+    "objects.githubusercontent.com",
+]
+sandbox_drop_caps = ["ALL"]
+sandbox_no_new_priv = true
+sandbox_read_only = true
+
+# -- Logging --
+[logging]
+level = "INFO"                    # DEBUG | INFO | WARNING | ERROR | CRITICAL
+format = "json"                   # json | text
+retention_days = 30
+to_file = true
+to_stderr = true

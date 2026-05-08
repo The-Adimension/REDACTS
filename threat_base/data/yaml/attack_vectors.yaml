@@ -1,0 +1,702 @@
+vectors:
+- id: AV-A-001
+  name: SQLite persistence (redcap.db)
+  description: REDCap uses MySQL exclusively. A SQLite database file (redcap.db / redcap_.db) in any webroot directory is
+    a conclusive indicator of the INFINITERED campaign, used as a C2 side-channel and data-staging area.
+  category: DATABASE_TO_FILESYSTEM
+  subcategory: SQLite persistence
+  filesystem_artifacts:
+  - '**/redcap.db'
+  - '**/redcap_.db'
+  - '**/redcap.db-wal'
+  - '**/redcap.db-journal'
+  - '**/redcap.db-shm'
+  detection_patterns:
+  - 'file_exists: *.db in webroot'
+  - 'magic_bytes: SQLite format 3\x00 header'
+  - 'sidecar_exists: -wal or -journal proves active writes'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: file_exists + magic_bytes
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-INF-001
+  - IOC-INF-002
+  out_of_scope_note: Content-level analysis of SQLite tables requires database tooling.
+- id: AV-A-002
+  name: MySQL SELECT INTO OUTFILE
+  description: An attacker with MySQL FILE privilege can write arbitrary data to the filesystem via SELECT INTO OUTFILE.
+  category: DATABASE_TO_FILESYSTEM
+  subcategory: MySQL OUTFILE
+  filesystem_artifacts:
+  - '*.php files owned by mysql user in webroot'
+  - files in /var/lib/mysql-files/ with PHP content
+  - newly created .php files with unexpected ownership
+  detection_patterns:
+  - 'ownership_check: file owner == mysql/mysqld'
+  - 'content_regex: <?php in files owned by mysql'
+  - 'timestamp_anomaly: new PHP file with no corresponding deploy'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: file_ownership + content_check
+  redacts_coverage: partial
+  related_iocs: []
+  out_of_scope_note: Requires OS-level uid/gid metadata not always available in snapshot.
+- id: AV-A-003
+  name: Credential exfiltration via database.php copies
+  description: Attacker creates copies of database.php to exfiltrate MySQL credentials.
+  category: DATABASE_TO_FILESYSTEM
+  subcategory: Credential exfil
+  filesystem_artifacts:
+  - database.php.bak
+  - database.php.old
+  - database.php.save
+  - .database.php.swp
+  - database_backup.php
+  - db.php
+  - database.php.dist
+  detection_patterns:
+  - 'glob: database*.php* or *database*.bak'
+  - 'content_match: $hostname and $password in non-canonical paths'
+  - 'file_count: more than one file containing REDCap DB credentials'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: file_exists + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-CFG-001
+  out_of_scope_note: ''
+- id: AV-A-004
+  name: MySQL general/slow log to webshell
+  description: By setting general_log_file to a .php path under the webroot, an attacker can inject PHP code via crafted SQL
+    queries.
+  category: DATABASE_TO_FILESYSTEM
+  subcategory: Log-to-webshell
+  filesystem_artifacts:
+  - '*.php files containing ''# Time:'' or ''SET timestamp='' log markers'
+  - '*.php files with MySQL general-log preamble lines'
+  detection_patterns:
+  - 'content_regex: /^/.*Time:.*\d{6}/m in .php files'
+  - 'content_regex: SET timestamp=\d+ inside PHP file'
+  - 'content_combo: MySQL log markers + <?php in same file'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: content_check
+  redacts_coverage: partial
+  related_iocs: []
+  out_of_scope_note: Confirming MySQL runtime config requires DB access, not filesystem.
+- id: AV-B-001
+  name: Hook injection (hook_functions.php)
+  description: REDCap hook_functions.php is sourced on every page load. Injecting code achieves persistent execution without
+    modifying core files.
+  category: FEATURE_ABUSE
+  subcategory: Hook injection
+  filesystem_artifacts:
+  - hook_functions.php with functions not in HOOK_FUNCTION_NAMES whitelist
+  - hook_functions.php containing eval/base64_decode/gzinflate calls
+  - hook_functions.php with require/include of external paths
+  detection_patterns:
+  - 'function_enum: function names not in whitelist set'
+  - 'content_regex: eval\(|base64_decode\(|gzinflate\('
+  - 'content_regex: (require|include)(_once)?\s*[(''"]'
+  - 'hash_compare: SHA-256 vs known-good distribution hash'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: function_enum + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-INF-003
+  - IOC-INF-004
+  out_of_scope_note: ''
+- id: AV-B-002
+  name: External Module backdoor
+  description: Malicious External Module with webshell code in PHP classes or cron methods.
+  category: FEATURE_ABUSE
+  subcategory: External Module abuse
+  filesystem_artifacts:
+  - modules/*/classes/*.php containing shell_exec/system/exec
+  - modules/*/config.json with cron-enabled and suspicious PHP
+  - modules/* with no matching entry in ExternalModules/config table
+  detection_patterns:
+  - 'content_regex: \b(shell_exec|system|passthru|exec|popen)\s*\('
+  - 'content_regex: eval\s*\(\s*\$_(GET|POST|REQUEST)'
+  - 'structure_check: config.json present but module not in official EM repo'
+  - 'timestamp_anomaly: module dir mtime differs from deploy baseline'
+  conclusiveness: suspicious
+  severity: CRITICAL
+  detection_method: content_check + structure_validation
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-SC-002
+  out_of_scope_note: Verifying EM legitimacy requires the REDCap EM library API.
+- id: AV-B-003
+  name: Plugin webshell
+  description: A webshell dropped in plugins/ disguised as a plugin, reachable without REDCap authentication if misconfigured.
+  category: FEATURE_ABUSE
+  subcategory: Plugin abuse
+  filesystem_artifacts:
+  - plugins/*.php containing eval/system/passthru
+  - plugins/*.php not present in known-good manifest
+  - plugins/*.php with obfuscated variable names or base64 blobs
+  detection_patterns:
+  - 'content_regex: \beval\s*\(|\bsystem\s*\(|\bpassthru\s*\('
+  - 'entropy_check: high Shannon entropy indicating obfuscation'
+  - 'manifest_diff: file not in distribution manifest'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: content_check + manifest_diff
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-FP-001
+  out_of_scope_note: ''
+- id: AV-B-004
+  name: edocs PHP upload
+  description: PHP files uploaded to the edocs/ directory. The edocs/ directory should NEVER contain executable PHP.
+  category: FEATURE_ABUSE
+  subcategory: Upload abuse
+  filesystem_artifacts:
+  - edocs/**/*.php
+  - edocs/**/*.phtml
+  - edocs/**/*.phar
+  - edocs/**/*.php5
+  - edocs/**/*.php7
+  detection_patterns:
+  - 'extension_check: .php/.phtml/.phar in edocs/'
+  - 'htaccess_verify: edocs/.htaccess must contain ''php_flag engine off'''
+  - 'content_regex: <?php in any edocs/* file'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: file_location + extension_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-FP-001
+  out_of_scope_note: ''
+- id: AV-B-005
+  name: cron.php manipulation
+  description: Modifications to cron.php inject persistent execution firing on every cron cycle.
+  category: FEATURE_ABUSE
+  subcategory: Cron abuse
+  filesystem_artifacts:
+  - cron.php with hash mismatch against distribution
+  - cron.php containing eval/base64_decode/shell_exec
+  detection_patterns:
+  - 'hash_compare: SHA-256 vs known-good cron.php hash'
+  - 'content_regex: (eval|base64_decode|shell_exec|file_get_contents)\('
+  - 'size_check: file size > expected baseline by significant margin'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: hash_compare + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-INF-004
+  out_of_scope_note: ''
+- id: AV-B-006
+  name: API token harvest via filesystem
+  description: Attacker-planted scripts enumerating REDCap API tokens via redcap_connect.php and redcap_user_rights.
+  category: FEATURE_ABUSE
+  subcategory: API abuse
+  filesystem_artifacts:
+  - '*.php files referencing redcap_user_rights and api_token'
+  - '*.php files including redcap_connect.php from non-standard paths'
+  - temp/*.php or edocs/*.php containing db_query calls
+  detection_patterns:
+  - 'content_regex: redcap_user_rights.*api_token'
+  - 'content_regex: require.*redcap_connect\.php'
+  - 'file_location: PHP files in temp/ or edocs/ directories'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: content_check + file_location
+  redacts_coverage: partial
+  related_iocs:
+  - IOC-FP-001
+  out_of_scope_note: Actual API token usage is logged in REDCap's audit trail, not on disk.
+- id: AV-B-007
+  name: Survey template modification
+  description: Modification of survey templates to inject credential-harvesting forms or JavaScript keyloggers.
+  category: FEATURE_ABUSE
+  subcategory: Survey abuse
+  filesystem_artifacts:
+  - Surveys/*.php with injected <script> or <iframe> tags
+  - Resources/js/*.js files with unexpected external URLs
+  - Surveys/survey_page.php with hash mismatch
+  detection_patterns:
+  - 'content_regex: <script[^>]*src=[''"]https?://(?!REDCap-internal)'
+  - 'content_regex: <iframe\s'
+  - 'hash_compare: Surveys/ PHP files vs distribution hashes'
+  - 'content_regex: XMLHttpRequest|fetch\(.*external'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: hash_compare + content_check
+  redacts_coverage: partial
+  related_iocs: []
+  out_of_scope_note: JavaScript execution analysis requires browser-based DAST.
+- id: AV-C-001
+  name: database.php poisoning
+  description: database.php must contain EXACTLY five variable assignments. Any additional code is a persistent backdoor.
+  category: CONFIG_PERSISTENCE
+  subcategory: database.php
+  filesystem_artifacts:
+  - database.php containing functions or class definitions
+  - database.php with require/include statements
+  - database.php with eval/system/exec calls
+  - database.php with variables beyond the allowed five
+  detection_patterns:
+  - 'structure_validation: exactly 5 allowed variables'
+  - 'content_regex: \bfunction\s+\w+\s*\('
+  - 'content_regex: \bclass\s+\w+'
+  - 'content_regex: (require|include)(_once)?\s*[(''"]'
+  - 'content_regex: (eval|exec|system|passthru|shell_exec)\s*\('
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: structure_validation + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-CFG-001
+  out_of_scope_note: ''
+- id: AV-C-002
+  name: .htaccess manipulation
+  description: .htaccess files can set auto_prepend_file, enable PHP in upload directories, or proxy requests to C2.
+  category: CONFIG_PERSISTENCE
+  subcategory: .htaccess
+  filesystem_artifacts:
+  - .htaccess with php_value auto_prepend_file
+  - .htaccess with php_value auto_append_file
+  - .htaccess with AddHandler/SetHandler enabling PHP execution
+  - .htaccess with ProxyPass to external host
+  - edocs/.htaccess missing 'php_flag engine off'
+  detection_patterns:
+  - 'content_regex: php_value\s+auto_(prepend|append)_file'
+  - 'content_regex: (Add|Set)Handler\s+.*php'
+  - 'content_regex: ProxyPass\s+'
+  - 'content_regex: RewriteRule\s+.*https?://'
+  - 'negative_check: edocs/.htaccess MUST contain php_flag engine off'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: content_check + negative_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-CFG-003
+  out_of_scope_note: ''
+- id: AV-C-003
+  name: .user.ini persistence
+  description: 'REDCap ships NO .user.ini files. Any instance is anomalous. Common abuse: auto_prepend_file to a webshell.'
+  category: CONFIG_PERSISTENCE
+  subcategory: .user.ini
+  filesystem_artifacts:
+  - '**/.user.ini (REDCap ships none)'
+  - .user.ini containing auto_prepend_file
+  - .user.ini containing auto_append_file
+  - .user.ini containing allow_url_include
+  detection_patterns:
+  - 'file_exists: any .user.ini in REDCap directories'
+  - 'content_regex: auto_prepend_file\s*='
+  - 'content_regex: auto_append_file\s*='
+  - 'content_regex: allow_url_include\s*=\s*1'
+  - 'content_regex: open_basedir\s*='
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: file_exists + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-CFG-002
+  out_of_scope_note: ''
+- id: AV-C-004
+  name: redcap_config table abuse (indirect)
+  description: Attacker modifies redcap_config MySQL table to change hook paths or enable insecure features.
+  category: CONFIG_PERSISTENCE
+  subcategory: Config table
+  filesystem_artifacts:
+  - PHP files at unusual paths referenced by config table entries
+  - hook_functions.php path change - new file at non-default location
+  detection_patterns:
+  - 'path_anomaly: hook file located outside expected directory'
+  - 'orphan_file: PHP file with no referencing require/include in codebase'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: path_analysis + orphan_detection
+  redacts_coverage: partial
+  related_iocs:
+  - IOC-CFG-001
+  out_of_scope_note: Confirming config-table manipulation requires MySQL access; filesystem analysis can only detect indirect
+    artifacts.
+- id: AV-D-001
+  name: Composer autoload poisoning
+  description: Injecting code in vendor/autoload.php gives persistent invisible execution with full application context.
+  category: SUPPLY_CHAIN
+  subcategory: Composer
+  filesystem_artifacts:
+  - vendor/autoload.php with manual modifications
+  - vendor/composer/autoload_classmap.php pointing to non-vendor paths
+  - vendor/composer/autoload_files.php with injected entries
+  detection_patterns:
+  - 'hash_compare: vendor/autoload.php vs composer-generated hash'
+  - 'content_regex: manual additions not matching Composer boilerplate'
+  - 'path_check: autoload_classmap referencing paths outside vendor/'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: hash_compare + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-SC-001
+  out_of_scope_note: ''
+- id: AV-D-002
+  name: Typosquatted External Module
+  description: Malicious External Module with name similar to a legitimate one, containing hidden backdoor code.
+  category: SUPPLY_CHAIN
+  subcategory: External Module squatting
+  filesystem_artifacts:
+  - modules/ directory entries with names similar to known EMs
+  - modules/*/config.json with suspicious cron or hook definitions
+  - modules/*/classes/*.php containing obfuscated code
+  detection_patterns:
+  - 'name_similarity: Levenshtein distance to official EM names'
+  - 'content_regex: eval|base64_decode|gzinflate in module PHP files'
+  - 'entropy_check: high entropy strings in PHP source'
+  - 'manifest_check: module not listed in official REDCap EM directory'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: name_analysis + content_check
+  redacts_coverage: partial
+  related_iocs:
+  - IOC-SC-002
+  out_of_scope_note: Official EM directory cross-check requires network access.
+- id: AV-D-003
+  name: EM framework tampering
+  description: Modifying ExternalModules/classes/ gives execution in every EM hook and cron invocation.
+  category: SUPPLY_CHAIN
+  subcategory: EM framework
+  filesystem_artifacts:
+  - ExternalModules/classes/AbstractExternalModule.php with hash mismatch
+  - ExternalModules/classes/Framework.php with hash mismatch
+  - ExternalModules/classes/*.php with injected eval/require
+  detection_patterns:
+  - 'hash_compare: ExternalModules/classes/* vs distribution hashes'
+  - 'content_regex: eval\(|base64_decode\( in framework files'
+  - 'timestamp_anomaly: framework file mtime newer than deploy date'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: hash_compare
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-SC-002
+  out_of_scope_note: ''
+- id: AV-E-001
+  name: Nginx config modification
+  description: Modification of Nginx site configuration to proxy to C2 or enable PHP in upload paths.
+  category: SERVER_CONFIG
+  subcategory: Nginx
+  filesystem_artifacts:
+  - /etc/nginx/sites-enabled/* with unexpected location blocks
+  - /etc/nginx/conf.d/*.conf with proxy_pass to external hosts
+  - nginx.conf include directives pointing to webroot files
+  detection_patterns:
+  - 'content_regex: proxy_pass\s+https?://(?!127\.0\.0\.1|localhost)'
+  - 'content_regex: fastcgi_pass.*edocs|temp|uploads'
+  - 'content_regex: location\s+~\s+\.php\$.*edocs'
+  - 'timestamp_check: config mtime vs deployment baseline'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: content_check + timestamp_check
+  redacts_coverage: none
+  related_iocs: []
+  out_of_scope_note: Server configs may be outside the REDCap webroot snapshot.
+- id: AV-E-002
+  name: Apache config modification
+  description: Tampering with Apache VirtualHost configuration to enable PHP in upload directories or set up reverse proxies.
+  category: SERVER_CONFIG
+  subcategory: Apache
+  filesystem_artifacts:
+  - /etc/apache2/sites-enabled/* with unexpected <Directory> blocks
+  - /etc/httpd/conf.d/*.conf with ProxyPass directives
+  - Apache config enabling PHP in edocs/ or temp/ directories
+  detection_patterns:
+  - 'content_regex: ProxyPass\s+/.*\s+https?://'
+  - 'content_regex: <Directory.*edocs.*>.*php_admin_flag\s+engine\s+on'
+  - 'content_regex: SetHandler.*php.*edocs|temp|uploads'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: content_check
+  redacts_coverage: none
+  related_iocs: []
+  out_of_scope_note: Apache configs may be outside the REDCap webroot snapshot.
+- id: AV-E-003
+  name: TLS certificate manipulation
+  description: Replacement or addition of TLS certificates/private keys in the webroot.
+  category: SERVER_CONFIG
+  subcategory: TLS
+  filesystem_artifacts:
+  - '**/*.pem in webroot'
+  - '**/*.key in webroot'
+  - '**/*.crt in webroot'
+  - '**/*.p12 in webroot'
+  - '**/*.pfx in webroot'
+  detection_patterns:
+  - 'extension_check: .pem/.key/.crt/.p12/.pfx in web-accessible paths'
+  - 'content_regex: -----BEGIN (RSA )?PRIVATE KEY----- in webroot files'
+  - 'file_location: certificate files under document root'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: file_exists + extension_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-FP-004
+  out_of_scope_note: ''
+- id: AV-F-001
+  name: auto_prepend_file via .user.ini
+  description: .user.ini with auto_prepend_file causes PHP to execute the specified file before every script in that directory
+    tree.
+  category: PHP_RUNTIME
+  subcategory: auto_prepend
+  filesystem_artifacts:
+  - .user.ini with auto_prepend_file directive
+  - the target file referenced by auto_prepend_file
+  detection_patterns:
+  - 'file_exists: .user.ini in any directory'
+  - 'content_regex: auto_prepend_file\s*=\s*(.+)'
+  - 'follow_reference: verify the prepended file exists and inspect it'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: file_exists + content_check + reference_follow
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-CFG-002
+  out_of_scope_note: ''
+- id: AV-F-002
+  name: PHP stream wrapper hijacking
+  description: Custom stream wrappers allow interception of file operations and code injection via include().
+  category: PHP_RUNTIME
+  subcategory: Stream wrapper
+  filesystem_artifacts:
+  - '*.php files containing stream_wrapper_register calls'
+  - '*.php files containing stream_wrapper_unregister'
+  - '*.php files defining classes with stream_open/stream_read methods'
+  detection_patterns:
+  - 'content_regex: stream_wrapper_register\s*\('
+  - 'content_regex: stream_wrapper_unregister\s*\('
+  - 'content_regex: function\s+stream_open\s*\('
+  - 'content_regex: class\s+\w+.*stream_open'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: content_check
+  redacts_coverage: partial
+  related_iocs: []
+  out_of_scope_note: Runtime wrapper registration requires PHP process inspection.
+- id: AV-F-003
+  name: OPcache poisoning
+  description: Replacing cached PHP bytecode achieves persistent execution surviving file-level integrity checks.
+  category: PHP_RUNTIME
+  subcategory: OPcache
+  filesystem_artifacts:
+  - OPcache file_cache directory with unexpected .php.bin files
+  - /tmp/opcache/* or configured file_cache path
+  - .php.bin files with mtime newer than corresponding .php source
+  detection_patterns:
+  - 'file_exists: .php.bin files in OPcache directory'
+  - 'timestamp_compare: .bin mtime vs .php source mtime'
+  - 'hash_compare: opcache system_id mismatch with current PHP config'
+  conclusiveness: suspicious
+  severity: CRITICAL
+  detection_method: file_exists + timestamp_compare
+  redacts_coverage: none
+  related_iocs: []
+  out_of_scope_note: OPcache directory may be outside the webroot snapshot.
+- id: AV-F-004
+  name: PHP extension injection (.so/.dll)
+  description: Malicious PHP extension provides root-level code execution within the PHP process.
+  category: PHP_RUNTIME
+  subcategory: PHP extension
+  filesystem_artifacts:
+  - '*.so or *.dll in PHP extension_dir with unknown hashes'
+  - /etc/php/*/conf.d/*.ini with extension= for unknown module
+  - php.ini with extension= or zend_extension= for non-standard path
+  detection_patterns:
+  - 'content_regex: ^extension\s*=.*\.so in conf.d/ INI files'
+  - 'content_regex: ^zend_extension\s*='
+  - 'file_hash: .so/.dll files not matching known PHP extension hashes'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: file_exists + hash_compare
+  redacts_coverage: none
+  related_iocs: []
+  out_of_scope_note: PHP extension directory is outside the webroot.
+- id: AV-F-005
+  name: include_path manipulation
+  description: Modifying include_path causes include/require to resolve from attacker-controlled directories first.
+  category: PHP_RUNTIME
+  subcategory: include_path
+  filesystem_artifacts:
+  - .user.ini with include_path directive
+  - .htaccess with php_value include_path
+  - php.ini or conf.d/ INI with modified include_path
+  - files in the injected include_path shadowing REDCap classes
+  detection_patterns:
+  - 'content_regex: include_path\s*= in .user.ini'
+  - 'content_regex: php_value\s+include_path in .htaccess'
+  - 'shadow_check: files in injected path matching names of REDCap classes'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: content_check + shadow_detection
+  redacts_coverage: partial
+  related_iocs:
+  - IOC-CFG-002
+  out_of_scope_note: ''
+- id: AV-G-001
+  name: Temp file persistence
+  description: PHP files planted in the REDCap temp/ directory, intended for transient data only.
+  category: ADDITIONAL
+  subcategory: Temp files
+  filesystem_artifacts:
+  - temp/**/*.php
+  - temp/**/*.phtml
+  - temp/**/*.phar
+  - temp/**/*.inc
+  detection_patterns:
+  - 'extension_check: .php/.phtml/.phar in temp/'
+  - 'content_regex: <?php in temp/ files'
+  - 'age_check: temp files older than expected retention period'
+  conclusiveness: conclusive
+  severity: HIGH
+  detection_method: file_location + extension_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-FP-001
+  out_of_scope_note: ''
+- id: AV-G-002
+  name: .git directory exposure
+  description: .git/ directory in the webroot exposes source code, commit history, and potentially credentials.
+  category: ADDITIONAL
+  subcategory: Git exposure
+  filesystem_artifacts:
+  - .git/config
+  - .git/HEAD
+  - .git/objects/
+  - .git/refs/
+  detection_patterns:
+  - 'directory_exists: .git/ in webroot'
+  - 'file_exists: .git/config'
+  - 'content_regex: \[remote\s+"origin"\] in .git/config'
+  conclusiveness: conclusive
+  severity: HIGH
+  detection_method: directory_exists
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-FP-003
+  out_of_scope_note: ''
+- id: AV-G-003
+  name: Symlink attack
+  description: Symbolic links pointing to sensitive files outside the document root.
+  category: ADDITIONAL
+  subcategory: Symlink
+  filesystem_artifacts:
+  - symlinks in webroot pointing outside document root
+  - symlinks targeting /etc/passwd, /etc/shadow, /proc/
+  - symlinks targeting database.php from web-accessible paths
+  detection_patterns:
+  - 'symlink_check: os.path.islink() on all files'
+  - 'target_check: symlink target resolves outside webroot'
+  - 'target_sensitivity: target is /etc/passwd, /etc/shadow, *.key, database.php'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: symlink_detection + target_analysis
+  redacts_coverage: partial
+  related_iocs: []
+  out_of_scope_note: Some snapshot methods do not preserve symlink targets.
+- id: AV-G-004
+  name: Polyglot file (image + PHP)
+  description: File with valid image header containing embedded PHP code, bypassing extension-based upload filters.
+  category: ADDITIONAL
+  subcategory: Polyglot
+  filesystem_artifacts:
+  - '*.jpg/*.png/*.gif files containing <?php'
+  - image files with PHP short tags <? or <?=
+  - edocs/ or temp/ images with embedded PHP
+  detection_patterns:
+  - 'magic_bytes: valid image header (JFIF/PNG/GIF89a)'
+  - 'content_regex: <\?(php|=) in binary image file'
+  - 'dual_extension: files like image.php.jpg or image.jpg.php'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: magic_bytes + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-FP-002
+  out_of_scope_note: ''
+- id: AV-G-005
+  name: Log file poisoning
+  description: PHP code injected into web-server logs, then executed by including the log file.
+  category: ADDITIONAL
+  subcategory: Log poisoning
+  filesystem_artifacts:
+  - '*.log files containing <?php tags'
+  - access.log or error.log with PHP code in User-Agent or Referer
+  - REDCap log files (temp/logs/) with embedded PHP
+  detection_patterns:
+  - 'content_regex: <?php in *.log files'
+  - 'content_regex: <?php in User-Agent or Referer log fields'
+  - 'file_inclusion: log file path referenced in auto_prepend_file or include()'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: content_check
+  redacts_coverage: partial
+  related_iocs: []
+  out_of_scope_note: Log files may be outside the webroot or rotated away.
+- id: AV-G-006
+  name: Webshell in Classes/ directory
+  description: Webshell in Classes/ benefits from the autoloader and inherits database connection context.
+  category: ADDITIONAL
+  subcategory: Core directory webshell
+  filesystem_artifacts:
+  - Classes/*.php not present in distribution manifest
+  - Classes/*.php containing eval/system/passthru/shell_exec
+  - Classes/*.php with recent mtime and high entropy
+  detection_patterns:
+  - 'manifest_diff: file not in distribution file list'
+  - 'content_regex: (eval|system|passthru|shell_exec|popen)\s*\('
+  - 'entropy_check: Shannon entropy > 5.5 indicating obfuscation'
+  - 'timestamp_anomaly: mtime significantly newer than deployment'
+  conclusiveness: conclusive
+  severity: CRITICAL
+  detection_method: manifest_diff + content_check
+  redacts_coverage: covered
+  related_iocs:
+  - IOC-FP-001
+  out_of_scope_note: ''
+- id: AV-G-007
+  name: Unexpected cron job scripts
+  description: Standalone scripts in webroot designed for system cron invocation, providing persistent periodic execution.
+  category: ADDITIONAL
+  subcategory: Cron scripts
+  filesystem_artifacts:
+  - '*.sh files in webroot with execution permissions'
+  - '*.php files in webroot referenced in /etc/cron.d/ or crontab'
+  - shell scripts calling curl/wget to external URLs
+  detection_patterns:
+  - 'extension_check: .sh files in webroot'
+  - 'content_regex: #!/bin/(ba)?sh in webroot files'
+  - 'content_regex: curl|wget.*https?:// in shell scripts'
+  - 'permission_check: executable bit set on unexpected files'
+  conclusiveness: suspicious
+  severity: HIGH
+  detection_method: file_exists + permission_check + content_check
+  redacts_coverage: partial
+  related_iocs: []
+  out_of_scope_note: System crontab is outside the REDCap webroot snapshot.
+- id: AV-G-008
+  name: PHP info / debug endpoint
+  description: phpinfo() pages or debug endpoints exposing full server configuration and credentials.
+  category: ADDITIONAL
+  subcategory: Info disclosure
+  filesystem_artifacts:
+  - info.php or phpinfo.php in webroot
+  - '*.php files containing only phpinfo() call'
+  - debug.php / test.php / i.php with phpinfo()
+  detection_patterns:
+  - 'filename_match: phpinfo.php, info.php, pi.php, test.php'
+  - 'content_regex: phpinfo\s*\(\s*\)'
+  - 'size_check: very small PHP file (~30-100 bytes) in webroot'
+  conclusiveness: suspicious
+  severity: MEDIUM
+  detection_method: file_exists + content_check
+  redacts_coverage: covered
+  related_iocs: []
+  out_of_scope_note: ''

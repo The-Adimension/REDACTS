@@ -1,0 +1,110 @@
+# REDACTS DAST - Dynamic Application Security Testing
+#
+# This static compose file is the entrypoint loaded by
+# ``dynamic.orchestrator``. It contains no defaults: every
+# credential and image tag must be supplied via environment variables
+# exported by the orchestrator (which sources them from the contract).
+# Compose will fail fast if any required variable is missing.
+#
+# A contract-driven renderer (``dynamic.compose_render``) can
+# alternatively emit a fully digest-pinned compose file at runtime;
+# this file remains the canonical static reference.
+
+services:
+ # MariaDB for REDCap
+  redcap-dast-db:
+    image: mariadb:${DAST_MARIADB_VERSION:?DAST_MARIADB_VERSION must be set by orchestrator}
+    container_name: redacts-dast-db
+    restart: "no"
+    environment:
+      MARIADB_ROOT_PASSWORD: "${DAST_DB_ROOT_PASS:?DAST_DB_ROOT_PASS must be set by orchestrator}"
+      MARIADB_DATABASE: redcap
+      MARIADB_USER: "${DAST_DB_USER:?DAST_DB_USER must be set by orchestrator}"
+      MARIADB_PASSWORD: "${DAST_DB_PASS:?DAST_DB_PASS must be set by orchestrator}"
+    tmpfs:
+      - /var/lib/mysql:size=512M
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+    networks:
+      - dast_net
+
+ # REDCap Application (Apache + PHP 8.2)
+  # IMPORTANT: The 'mirror/Dockerfile' must exist relative to the build
+  # context (two directories up from dast/).  Because REDCap is
+  # proprietary, this Dockerfile is NOT shipped with REDACTS - you must
+  # create it yourself.  If the file is missing, `docker compose up
+  # --build` will fail with a clear Dockerfile-not-found error.
+  redcap-dast-app:
+    build:
+      context: ${DAST_BUILD_CONTEXT:-../../}
+      dockerfile: ${DAST_DOCKERFILE:-mirror/Dockerfile}
+    container_name: redacts-dast-app
+    restart: "no"
+    depends_on:
+      redcap-dast-db:
+        condition: service_healthy
+    environment:
+      REDCAP_VERSION: "${REDCAP_VERSION:-}"
+      REDCAP_DB_HOST: redcap-dast-db
+      REDCAP_DB_PORT: "3306"
+      REDCAP_DB_NAME: redcap
+      REDCAP_DB_USER: "${DAST_DB_USER:?DAST_DB_USER must be set by orchestrator}"
+      REDCAP_DB_PASSWORD: "${DAST_DB_PASS:?DAST_DB_PASS must be set by orchestrator}"
+      REDCAP_DB_PASS: "${DAST_DB_PASS:?DAST_DB_PASS must be set by orchestrator}"
+      REDCAP_SALT: "${DAST_SALT:?DAST_SALT must be set by orchestrator}"
+      DAST_ADMIN_USER: "${DAST_ADMIN_USER:?DAST_ADMIN_USER must be set by orchestrator}"
+      EXTERNAL_PORT: "${DAST_PORT:-8585}"
+      # Xdebug trace for dynamic taint analysis
+      XDEBUG_MODE: "${XDEBUG_MODE:-trace}"
+      XDEBUG_CONFIG: "output_dir=/tmp/xdebug"
+    ports:
+      - "${DAST_PORT:-8585}:80"
+    volumes:
+      - dast_edocs:/var/www/html/redcap/edocs
+      - dast_temp:/var/www/html/redcap/temp
+      - ./results/xdebug:/tmp/xdebug
+      # Mount upgrade ZIP if testing upgrades
+      - ./upgrade-packages:/opt/upgrade-packages:ro
+    networks:
+      - dast_net
+
+ # Playwright Test Runner
+  playwright:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    container_name: redacts-dast-playwright
+    restart: "no"
+    depends_on:
+      redcap-dast-app:
+        condition: service_started
+    environment:
+      REDCAP_BASE_URL: "http://redcap-dast-app"
+      REDCAP_ADMIN_USER: "${DAST_ADMIN_USER:?DAST_ADMIN_USER must be set by orchestrator}"
+      REDCAP_ADMIN_PASS: "${DAST_ADMIN_PASS:?DAST_ADMIN_PASS must be set by orchestrator}"
+      REDCAP_VERSION: "${REDCAP_VERSION:-}"
+      DAST_RESULTS_DIR: "/results"
+      # Filesystem snapshot dirs
+      REDCAP_WEBROOT: "/redcap-snapshot"
+    volumes:
+      - ./results:/results
+      - ./tests:/tests:ro
+      # Read-only snapshot of REDCap files for pre/post diff
+      - dast_edocs:/redcap-snapshot/edocs:ro
+      - dast_temp:/redcap-snapshot/temp:ro
+    networks:
+      - dast_net
+
+volumes:
+  dast_edocs:
+    driver: local
+  dast_temp:
+    driver: local
+
+networks:
+  dast_net:
+    driver: bridge
