@@ -6,9 +6,33 @@ then scopes deeper static and dynamic analysis to the differential
 delta. It does **not** perform forensic acquisition. It does **not**
 replace manual investigation by a qualified analyst.
 
-> Built in response to the INFINITERED malware family (REDCap, May 2025
-> disclosure). Designed for use in clinical-research environments where
-> the audited tree may contain protected health information.
+> **REDACTS** is a forensic-analysis aid built in response to the
+> INFINITERED malware family (REDCap, May 2025 disclosure). Designed for
+> use in clinical-research environments where the audited tree may
+> contain protected health information.
+>
+> REDACTS is **not** a substitute for thorough manual review by qualified
+> professionals, REDCap administrators, the REDCap Community, or
+> Dev/SecOps teams. Scan results are **not** guaranteed to be complete or
+> definitive — false positives and false negatives are possible, especially
+> alongside REDCap updates or unknown INFINITERED variants.
+> **Expert review is mandatory.**
+>
+> Use REDACTS as an auxiliary tool within an incident-response workflow,
+> never as the sole basis for security decisions. REDACTS does not modify,
+> patch, or alter the files it scans.
+>
+> Built from base scripts the author developed during prior work on PHP,
+> MySQL, and REDCap. AI agents (Claude Opus, a local fine-tune of
+> FunctionGemma for tool calling) and @repomix were used to accelerate
+> pipeline development.
+>
+> If you discover evidence of compromise, contact your security team and
+> the REDCap Consortium immediately. See [DISCLAIMER](DISCLAIMER) for the
+> full disclaimer, including non-affiliation with Vanderbilt University /
+> the REDCap Consortium and authorisation requirements.
+>
+> © 2024–2026 The Adimension / Shehab Anwer — atrium@theadimension.com
 
 ## Status
 

@@ -54,16 +54,31 @@ function walkDir(
     if (item.isDirectory()) {
       walkDir(root, full, entries);
     } else if (item.isFile()) {
-      const stat = fs.statSync(full);
-      const content = fs.readFileSync(full);
-      const hash = crypto.createHash("sha256").update(content).digest("hex");
+      // Open once via descriptor to avoid TOCTOU between stat and read
+      // (CodeQL js/file-system-race, CWE-367). O_NOFOLLOW refuses any
+      // symlink that may have been swapped in since readdirSync.
+      let fd: number;
+      try {
+        fd = fs.openSync(full, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      } catch {
+        // Symlink, permission denied, or file vanished between readdir
+        // and open - skip deliberately.
+        continue;
+      }
+      try {
+        const stat = fs.fstatSync(fd);
+        const content = fs.readFileSync(fd);
+        const hash = crypto.createHash("sha256").update(content).digest("hex");
 
-      entries.set(rel, {
-        path: rel,
-        size: stat.size,
-        hash,
-        mtime: stat.mtime.toISOString(),
-      });
+        entries.set(rel, {
+          path: rel,
+          size: stat.size,
+          hash,
+          mtime: stat.mtime.toISOString(),
+        });
+      } finally {
+        fs.closeSync(fd);
+      }
     }
   }
 }
