@@ -34,6 +34,10 @@ import sys
 import threading
 import traceback
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from static.core.contract import FrozenCaseContract
 
 # Resolve project root for consistent path references
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -69,14 +73,12 @@ def _install_crash_handlers() -> None:
         sys.stderr.write(f"[WARN] faulthandler unavailable: {exc}\n")
 
     def _excepthook(exc_type, exc, tb) -> None:
+        from static.cli.error_recovery import handle_error
         sys.stderr.write(
             "\n[FATAL] REDACTS aborted with an uncaught exception.\n"
         )
         traceback.print_exception(exc_type, exc, tb, file=sys.stderr)
-        sys.stderr.write(
-            f"[FATAL] {exc_type.__name__}: {exc}\n"
-            "[FATAL] Exit code 70 (EX_SOFTWARE).\n"
-        )
+        handle_error(exc)
         sys.stderr.flush()
 
     sys.excepthook = _excepthook
@@ -95,8 +97,90 @@ def _install_crash_handlers() -> None:
     _install_crash_handlers._installed = True  # type: ignore[attr-defined]
 
 
-def _install_contract(case_path: Path | None) -> bool:
-    """Load case.toml + lockfile, freeze, and install into runtime_context.
+def _file_sha256(path: Path) -> str:
+    """Stream a file's SHA-256 so a multi-GB archive is not read into memory.
+
+    Delegates to the project's hashing chokepoint rather than reimplementing
+    the buffered read.
+    """
+    from static.core.hashing import compute_single_hash
+
+    return compute_single_hash(path)
+
+
+def _apply_cli_overrides(
+    contract: "FrozenCaseContract", args: argparse.Namespace
+) -> "FrozenCaseContract":
+    """Return *contract* with CLI flag overrides applied.
+
+    Pure: takes and returns a contract rather than swapping the one installed
+    on ``runtime_context``. That matters for two reasons.
+
+    * ``runtime_context`` documents the contract as set exactly once per
+      process, with ``reset_contract()`` reserved for tests. Resetting it
+      mid-run to install a mutated copy defeats that guarantee.
+    * The caller verifies the lockfile *after* calling this, so an override
+      that changes the sealed surface is caught by the existing
+      ``lockfile-drift`` refusal instead of silently running a configuration
+      that no longer matches the seal.
+    """
+    from dataclasses import replace
+
+    from static.core.contract import InputArtifact
+
+    # 1. Inputs override (--target, --reference)
+    target_path = getattr(args, "target", None)
+    ref_path = getattr(args, "reference", None)
+    new_inputs = contract.inputs
+
+    if target_path is not None or ref_path is not None:
+        new_target = new_inputs.target
+        new_ref = new_inputs.reference
+
+        if target_path is not None:
+            p = Path(target_path).resolve()
+            new_target = InputArtifact(
+                path=p, sha256=_file_sha256(p) if p.is_file() else ""
+            )
+
+        if ref_path is not None:
+            p = Path(ref_path).resolve()
+            new_ref = InputArtifact(
+                path=p, sha256=_file_sha256(p) if p.is_file() else ""
+            )
+
+        new_inputs = replace(new_inputs, target=new_target, reference=new_ref)
+
+    # 2. Static override (--severity-gate, --parallel-workers, --timeout / --global-timeout-seconds)
+    severity_gate = getattr(args, "severity_gate", None)
+    parallel_workers = getattr(args, "parallel_workers", None)
+    timeout = getattr(args, "global_timeout_seconds", None)
+    if timeout is None:
+        timeout = getattr(args, "timeout", None)
+
+    static_updates = {}
+    if severity_gate is not None:
+        static_updates["severity_gate"] = severity_gate
+    if parallel_workers is not None:
+        static_updates["parallel_workers"] = parallel_workers
+    if timeout is not None:
+        static_updates["global_timeout_seconds"] = timeout
+
+    new_static = contract.static
+    if static_updates:
+        new_static = replace(new_static, **static_updates)
+
+    if new_inputs is contract.inputs and new_static is contract.static:
+        return contract
+    return replace(contract, inputs=new_inputs, static=new_static)
+
+
+def _install_contract(case_path: Path | None, args: argparse.Namespace) -> bool:
+    """Load case.toml, apply CLI overrides, verify the seal, and install once.
+
+    Order is deliberate: overrides are applied *before* ``verify_lockfile`` so
+    a sealed case refuses any flag that would change the locked surface, rather
+    than the run proceeding under a configuration the lockfile never covered.
 
     Returns ``True`` on success, ``False`` when no case file is present.
     Aborts (``sys.exit(2)``) on a structural / lockfile error so every
@@ -108,28 +192,25 @@ def _install_contract(case_path: Path | None) -> bool:
         verify_lockfile,
     )
     from static.core import runtime_context
+    from static.cli.error_recovery import format_exception_recovery
 
     target = case_path if case_path is not None else (PROJECT_ROOT / "case.toml")
     if not target.exists():
+        if case_path is not None:
+            raise FileNotFoundError(f"Specified case file does not exist: {case_path}")
         return False
 
     try:
         contract = load_and_freeze(target)
-    except CaseConfigError as exc:
-        print(f"[FATAL] case.toml is invalid: {exc}", file=sys.stderr)
-        sys.exit(2)
+        contract = _apply_cli_overrides(contract, args)
 
-    lock_path = target.with_suffix(target.suffix + ".lock")
-    if lock_path.exists():
-        try:
+        lock_path = target.with_suffix(target.suffix + ".lock")
+        if lock_path.exists():
             verify_lockfile(contract, lock_path)
-        except CaseConfigError as exc:
-            print(
-                f"[FATAL] case.toml.lock mismatch - the contract has been "
-                f"modified since it was sealed: {exc}",
-                file=sys.stderr,
-            )
-            sys.exit(2)
+    except CaseConfigError as exc:
+        block = format_exception_recovery(exc)
+        block.display()
+        sys.exit(2)
 
     runtime_context.set_contract(contract)
     return True
@@ -140,11 +221,14 @@ def cmd_scan(args: argparse.Namespace) -> int:
     from static.core.runtime_context import get_optional_contract
 
     contract = get_optional_contract()
-    if contract is not None and args.mode is None:
+    # ``--mode`` is defined only by the scan subparser, but cmd_scan is also the
+    # fallback for a bare ``redacts`` invocation, so read it defensively.
+    requested_mode = getattr(args, "mode", None)
+    if contract is not None and requested_mode is None:
         # Default mode comes from the contract: static-only unless dynamic.enabled.
         mode = "full" if contract.dynamic.enabled else "static"
     else:
-        mode = args.mode or "static"
+        mode = requested_mode or "static"
 
     def _run() -> int:
         if mode in ("static", "full"):
@@ -208,7 +292,7 @@ def cmd_preflight(args: argparse.Namespace) -> int:
                     line += f"  [fix: {check.fix_hint}]"
                 print(line)
             if not getattr(args, "install", False):
-                print("Tip: re-run with '--install' to auto-install missing items.")
+                print("Tip: see SETUP.md for step-by-step instructions to install all required dependencies.")
             return 1
         if result.warn_failures:
             print("\n[WARNING] Some tools unavailable - reduced coverage:")
@@ -271,39 +355,170 @@ def cmd_secrets(args: argparse.Namespace) -> int:
     return secrets_main(list(args.secrets_argv or []))
 
 
-def build_parser() -> argparse.ArgumentParser:
-    # Shared options every subcommand inherits via ``parents=[]``.
-    shared = argparse.ArgumentParser(add_help=False)
+def cmd_init(args: argparse.Namespace) -> int:
+    """Run interactive contract wizard to generate case.toml."""
+    from static.cli.init_wizard import run_init_wizard
+    return run_init_wizard(args)
 
-    parser = argparse.ArgumentParser(
+
+class REDACTSArgumentParser(argparse.ArgumentParser):
+    """Custom ArgumentParser providing Guided Error Recovery on CLI argument errors."""
+
+    def error(self, message: str) -> None:
+        from static.cli.error_recovery import ErrorRecoveryBlock
+
+        block = ErrorRecoveryBlock(
+            title="CLI Argument Error",
+            what_went_wrong=f"Invalid command line invocation: {message}",
+            how_to_fix=[
+                "Check command line syntax and flag spelling.",
+                "Review available subcommands and option groups in '--help'.",
+            ],
+            recommended_command="python main.py scan --help",
+            exit_code=2,
+        )
+        block.display()
+        sys.exit(2)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = REDACTSArgumentParser(
         prog="redacts",
         description="REDACTS - REDCap Arbitrary Code Threat Scan",
-        parents=[shared],
+        add_help=False,
     )
-    parser.add_argument(
+
+    top_common = parser.add_argument_group("Common Options")
+    top_common.add_argument(
+        "-h",
+        "--help",
+        action="help",
+        default=argparse.SUPPRESS,
+        help="Show this help message and exit",
+    )
+    top_common.add_argument(
         "--case",
         type=Path,
         default=None,
         metavar="PATH",
-        help="Path to case.toml (defaults to ./case.toml). The case file "
-             "is the single source of configuration; environment "
-             "variables are not consulted.",
+        help=(
+            "Path to case.toml (defaults to ./case.toml). The case file "
+            "is the single source of configuration; environment "
+            "variables are not consulted."
+        ),
     )
-    sub = parser.add_subparsers(dest="command")
+
+    sub = parser.add_subparsers(dest="command", title="Subcommands")
+
+    def _create_subparser(name: str, help_msg: str):
+        sp = sub.add_parser(name, help=help_msg, add_help=False)
+        cg = sp.add_argument_group("Common Options")
+        cg.add_argument(
+            "-h",
+            "--help",
+            action="help",
+            default=argparse.SUPPRESS,
+            help="Show this help message and exit",
+        )
+        cg.add_argument(
+            "--case",
+            type=Path,
+            # SUPPRESS - not None. argparse parses a subcommand into a fresh
+            # namespace and copies every key back over the top-level one, so a
+            # concrete default here would clobber ``redacts --case X scan``
+            # with None. With SUPPRESS the key is absent unless actually given.
+            default=argparse.SUPPRESS,
+            metavar="PATH",
+            help="Path to case.toml (defaults to ./case.toml).",
+        )
+        ag = sp.add_argument_group("Advanced Options")
+        return sp, cg, ag
+
+
+    # init
+    init_p, init_cg, init_ag = _create_subparser(
+        "init", "Interactively build a valid case.toml configuration"
+    )
+    init_cg.add_argument(
+        "--target", type=Path, default=None, help="Target archive or directory path"
+    )
+    init_cg.add_argument(
+        "--reference", type=Path, default=None, help="Reference archive or directory path"
+    )
+    init_cg.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=None,
+        help="Output path for case.toml (defaults to ./case.toml)",
+    )
+    init_ag.add_argument("--case-id", default=None, help="Case ID")
+    init_ag.add_argument("--analyst", default=None, help="Analyst name")
+    init_ag.add_argument("--organization", default=None, help="Organization name")
+    init_ag.add_argument(
+        "--yes",
+        "-y",
+        "--non-interactive",
+        action="store_true",
+        dest="non_interactive",
+        help="Skip interactive prompts and use defaults/flags",
+    )
+    init_p.set_defaults(func=cmd_init)
 
     # scan
-    scan_p = sub.add_parser("scan", parents=[shared], help="Run analysis (default)")
-    scan_p.add_argument(
+    scan_p, scan_cg, scan_ag = _create_subparser("scan", "Run analysis (default)")
+    scan_cg.add_argument(
+        "--target",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Target archive or directory path for analysis",
+    )
+    scan_cg.add_argument(
+        "--reference",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Reference archive or directory path for analysis",
+    )
+    scan_cg.add_argument(
         "--mode",
         choices=["static", "dynamic", "full"],
         default=None,
         help="Analysis mode (default: derived from case.toml [dynamic].enabled).",
     )
+
+    scan_ag.add_argument(
+        "--severity-gate",
+        choices=["info", "low", "medium", "high", "critical"],
+        default=None,
+        help="Minimum severity threshold for findings",
+    )
+    scan_ag.add_argument(
+        "--parallel-workers",
+        type=int,
+        default=None,
+        help="Number of parallel worker processes for static analysis",
+    )
+    scan_ag.add_argument(
+        "--timeout",
+        "--global-timeout-seconds",
+        type=int,
+        default=None,
+        dest="global_timeout_seconds",
+        help="Global timeout in seconds for static analysis",
+    )
+    scan_ag.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose diagnostic logging.",
+    )
     scan_p.set_defaults(func=cmd_scan)
 
     # preflight
-    pf = sub.add_parser("preflight", parents=[shared], help="Run preflight checks")
-    pf.add_argument(
+    pf, pf_cg, pf_ag = _create_subparser("preflight", "Run preflight checks")
+    pf_ag.add_argument(
         "--install",
         action="store_true",
         help=(
@@ -314,27 +529,30 @@ def build_parser() -> argparse.ArgumentParser:
     pf.set_defaults(func=cmd_preflight)
 
     # update
-    up = sub.add_parser("update", parents=[shared], help="Update threat database")
-    up.add_argument(
+    up, up_cg, up_ag = _create_subparser("update", "Update threat database")
+    up_cg.add_argument(
         "target",
         nargs="?",
         choices=["cwe", "attack", "yara", "nvd", "all"],
         default=None,
         help="Optional update target (positional). Defaults to all.",
     )
-    up.add_argument("--no-confirm", action="store_true")
+    up_ag.add_argument(
+        "--no-confirm", action="store_true", help="Skip confirmation prompt"
+    )
     up.set_defaults(func=cmd_update)
 
     # paths
-    pp = sub.add_parser("paths", help="Show resolved REDACTS storage locations")
+    pp, pp_cg, pp_ag = _create_subparser(
+        "paths", "Show resolved REDACTS storage locations"
+    )
     pp.set_defaults(func=cmd_paths)
 
     # secrets - passthrough to static.core.secrets.cli_main
-    sp = sub.add_parser(
-        "secrets",
-        help="Manage secrets in the OS credential store (set/get/delete/list)",
+    sp, sp_cg, sp_ag = _create_subparser(
+        "secrets", "Manage secrets in the OS credential store (set/get/delete/list)"
     )
-    sp.add_argument(
+    sp_ag.add_argument(
         "secrets_argv",
         nargs=argparse.REMAINDER,
         help="Arguments forwarded to ``redacts secrets`` (e.g. ``set <key>``).",
@@ -350,21 +568,35 @@ def main() -> int:
     # readable banner instead of a silent exit.
     _install_crash_handlers()
 
-    parser = build_parser()
-    args = parser.parse_args()
+    try:
+        parser = build_parser()
+        args = parser.parse_args()
 
-    # Install the FrozenCaseContract for every consumer to read from.
-    # When no case.toml is present we proceed with built-in defaults
-    # so ``python main.py paths`` and ``python main.py preflight`` work
-    # outside a case workspace.
-    _install_contract(getattr(args, "case", None))
+        # Install the FrozenCaseContract for every consumer to read from.
+        # When no case.toml is present we proceed with built-in defaults
+        # so ``python main.py paths`` and ``python main.py preflight`` work
+        # outside a case workspace.
+        if getattr(args, "command", None) != "init":
+            _install_contract(getattr(args, "case", None), args)
 
-    if not hasattr(args, "func"):
-        # Default to scan when no subcommand was given.
-        args.mode = None
-        return cmd_scan(args)
+        if hasattr(args, "func"):
+            func = args.func
+        else:
+            # No subcommand given: default to ``scan``. cmd_scan reads flags
+            # that only the scan subparser defines, so seed them here.
+            func = cmd_scan
+            args.mode = None
 
-    return args.func(args)
+        # Subcommands own their own failure reporting - static.__main__, for
+        # instance, already renders a specific recovery block before returning
+        # nonzero. Rendering a second, generic one here just buried the useful
+        # message under "Runtime Error: Error: 1".
+        return func(args)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        from static.cli.error_recovery import handle_error
+        return handle_error(exc)
 
 
 if __name__ == "__main__":

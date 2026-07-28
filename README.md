@@ -36,14 +36,15 @@ replace manual investigation by a qualified analyst.
 
 ## Status
 
-- Version: 3.0.0
-- Python: 3.14 (tested). 3.13 also works; 3.12 is the minimum.
+- Version: 4.0.0
+- **Python: 3.13 recommended, 3.12 also supported. 3.12 is the minimum.**
 - License: Apache-2.0
 
-Some optional scanners (notably Semgrep) have not yet shipped Python 3.14
-wheels. If the host runs 3.14, the affected scanner is reported as a
-runtime gap and the rest of the pipeline continues; see
-[USER_GUIDE.md](USER_GUIDE.md) Sec.5.
+> **Do not use Python 3.14.** Semgrep - the primary PHP code scanner - installs
+> on 3.14 but its engine does not run there (it exits without producing any
+> output). `preflight` detects this and fails Semgrep as **non-functional**,
+> rather than letting a scan silently proceed with no PHP coverage. Run REDACTS
+> on Python **3.13 or 3.12**. See [USER_GUIDE.md](USER_GUIDE.md) Sec.5.
 
 ## What it does
 
@@ -52,6 +53,7 @@ runtime gap and the rest of the pipeline continues; see
 | Ingest | `static/collect/` (zip / tar / 7z / rar / http / sftp / local) | SHA-256 manifest |
 | Baseline diff | `static/audit/` | Added / modified / deleted file set |
 | Static analysis | `static/scanners/` (regex + tree-sitter PHP + Semgrep + Trivy + YARA) | `UnifiedFinding`s |
+| File-type verification | `static/scanners/` (Magika AI content-typing) | Masquerade / hidden-payload flags |
 | Dynamic analysis (optional) | `dynamic/` (Playwright + Docker) | DAST findings |
 | Reporting | `static/report/` | JSON / Markdown / HTML / SARIF |
 
@@ -69,9 +71,15 @@ python -m venv .venv && source .venv/bin/activate     # PowerShell: .\.venv\Scri
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-The repository does not ship a pre-built `.venv`; create one as above.
-Dynamic (DAST) mode additionally requires Docker with the Compose v2
-plugin (`docker compose version` must succeed).
+This installs the Python side (Semgrep, Repomix, Magika, tree-sitter, etc.).
+**Trivy and YARA are separate native binaries** that must be on your `PATH` -
+see [SETUP.md](SETUP.md) for per-OS install commands and a full preflight
+walkthrough. The repository does not ship a pre-built `.venv`; create one as
+above.
+
+Docker is needed **only** for dynamic (DAST) mode (`docker compose version`
+must succeed). A static-only scan - the common case - does not need Docker.
+Verify your environment at any time with `python main.py preflight`.
 
 ## Quickstart
 
@@ -80,17 +88,20 @@ Every run reads its configuration from a single `case.toml`
 variables is rejected by the production code paths.
 
 ```bash
-# 1. Author the case file. A documented template ships in the repo.
-cp case.example.toml case.toml
-$EDITOR case.toml
+# 1. Create the case file interactively (recommended for first-time users).
+#    Point it at the installation to check (target) and a known-good
+#    REDCap release of the same version (reference). It auto-computes
+#    hashes, detects available scanners, and writes a valid case.toml.
+python main.py init --target /path/to/target.zip --reference /path/to/reference.zip
 
-# 2. Show resolved storage locations.
-python main.py paths
+#    (Advanced: copy and hand-edit the template instead -
+#     `cp case.example.toml case.toml` then edit.)
 
-# 3. Verify the environment. Exit 0 = ready; exit 1 = required tool missing.
+# 2. Verify the environment. Exit 0 = ready; exit 1 = a required tool is
+#    missing or non-functional. Fixes are printed inline; see SETUP.md.
 python main.py preflight
 
-# 4. Run the scan. Mode defaults to [dynamic].enabled in case.toml.
+# 3. Run the scan. Mode defaults to [dynamic].enabled in case.toml.
 python main.py scan
 ```
 

@@ -1,20 +1,22 @@
 """
 REDACTS Repomix Integration - Generate compressed codebase representations.
 
-Runs repomix on both REDCap versions and provides:
-    - Token/character counts for each version
-    - Compressed output files for analyst review
-    - Comparison of structure between repomix outputs
+Produces a single compressed snapshot of a REDCap tree for analyst review,
+plus file/token/character counts, using the ``repomix`` Python package
+(``pip install repomix``).
+
+This runs entirely in-process via the package's Python API. It replaces the
+earlier integration that shelled out to the Node ``repomix`` / ``npx`` CLI,
+which required Node.js on the host and, on Windows, routed a ``.cmd`` shim
+through ``cmd.exe`` (a command-injection surface). Neither is needed now.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
-import re
-import shutil
-import subprocess
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -42,43 +44,20 @@ class RepomixResult:
         return asdict(self)
 
 
-@dataclass
-class RepomixComparison:
-    """Comparison between two repomix outputs."""
-
-    source_result: RepomixResult = field(default_factory=RepomixResult)
-    target_result: RepomixResult = field(default_factory=RepomixResult)
-
-    token_difference: int = 0
-    char_difference: int = 0
-    file_difference: int = 0
-    size_difference: int = 0
-    token_change_pct: float = 0.0
-    char_change_pct: float = 0.0
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "source": self.source_result.to_dict(),
-            "target": self.target_result.to_dict(),
-            "differences": {
-                "tokens": self.token_difference,
-                "chars": self.char_difference,
-                "files": self.file_difference,
-                "size_bytes": self.size_difference,
-                "token_change_pct": self.token_change_pct,
-                "char_change_pct": self.char_change_pct,
-            },
-        }
-
-
 class RepomixRunner:
-    """
-    Wraps repomix CLI to generate compressed codebase representations.
+    """Generate compressed codebase snapshots via the ``repomix`` Python API.
 
-    Requires repomix to be installed: npm install -g repomix
+    Requires the ``repomix`` package (``pip install repomix``); it is declared
+    as a REDACTS Python dependency, so a correctly provisioned environment
+    always has it. When absent, :meth:`run` returns a failed result rather than
+    raising, so the surrounding collection step degrades gracefully.
     """
 
     DEFAULT_EXCLUDE = [
+        # A prior Repomix dump left in the tree would otherwise be re-bundled
+        # into this run's output (a bundle inside a bundle).
+        "**/repomix-output.*",
+        "repomix-output.*",
         "vendor/**",
         "node_modules/**",
         ".git/**",
@@ -102,33 +81,24 @@ class RepomixRunner:
 
     def __init__(
         self,
-        repomix_cmd: str = "repomix",
         exclude_patterns: list[str] | None = None,
         timeout: int = 600,
+        output_style: str = "plain",
     ):
-        # Resolve the command to a full path so subprocess.run works
-        # on Windows where .cmd/.ps1 wrappers need explicit resolution.
-        resolved = shutil.which(repomix_cmd)
-        self.repomix_cmd = resolved if resolved else repomix_cmd
         self.exclude = exclude_patterns or self.DEFAULT_EXCLUDE
+        # ``timeout`` is retained for call-site compatibility. The Python API
+        # is synchronous and in-process; there is no subprocess to bound, so
+        # this is advisory only.
         self.timeout = timeout
+        self.output_style = output_style
 
     def is_available(self) -> bool:
-        """Check if repomix is installed."""
-        cmd = shutil.which(self.repomix_cmd)
-        if cmd:
-            return True
-        # Try npx
+        """Return ``True`` if the ``repomix`` package can be imported."""
         try:
-            npx_cmd = shutil.which("npx") or "npx"
-            result = subprocess.run(
-                [npx_cmd, "--yes", "repomix", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            return result.returncode == 0
-        except Exception:
+            import repomix  # noqa: F401
+
+            return True
+        except ImportError:
             return False
 
     def run(
@@ -137,193 +107,69 @@ class RepomixRunner:
         output_file: Path,
         label: str = "",
     ) -> RepomixResult:
-        """
-        Run repomix on a directory.
+        """Pack *source_dir* into *output_file* and return counts.
 
         Args:
-            source_dir: Directory to process
-            output_file: Where to write output
-            label: Label for logging
+            source_dir: Directory to process.
+            output_file: Where to write the packed snapshot.
+            label: Label for logging.
         """
-        import time
-
         result = RepomixResult()
         start = time.time()
 
-        # Build command
-        # Use "." as target since cwd is set to source_dir;
-        # passing an absolute source_dir with cwd=source_dir causes
-        # repomix to resolve it as source_dir/source_dir.
-        cmd = [self.repomix_cmd, "."]
-        for pattern in self.exclude:
-            cmd.extend(["--ignore", pattern])
-        cmd.extend(["-o", str(output_file.resolve())])
-        result.command_used = " ".join(cmd)
+        try:
+            from repomix import RepoProcessor, RepomixConfig
+        except ImportError as exc:
+            result.error = (
+                f"repomix package not installed: {exc}. Install with "
+                "'pip install repomix'."
+            )
+            logger.warning(result.error)
+            return result
+
+        output_file = Path(output_file)
 
         try:
-            logger.info(f"Running repomix on {label or source_dir}...")
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                cwd=str(source_dir),
-            )
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+
+            config = RepomixConfig()
+            config.output.file_path = str(output_file.resolve())
+            config.output.style = self.output_style
+            config.output.calculate_tokens = True
+            config.output.show_file_stats = True
+            # REDACTS supplies its own ignore list; keep repomix's built-in
+            # default ignores and .gitignore handling enabled as well so junk
+            # directories are still excluded if the caller's list is short.
+            config.ignore.custom_patterns = list(self.exclude)
+
+            logger.info("Running repomix (Python API) on %s...", label or source_dir)
+            processor = RepoProcessor(directory=str(source_dir), config=config)
+            api_result = processor.process(write_output=True)
 
             result.duration_seconds = round(time.time() - start, 2)
-
-            if proc.returncode == 0:
-                result.success = True
-
-                # Parse output stats from stdout. Repomix prints
-                # anchored summary labels ("Total Files:", "Total
-                # Tokens:", "Total Chars:"); we match on those rather
-                # than free-form digit runs to avoid latching onto
-                # unrelated numbers in the progress output.
-                # Some repomix versions write the summary to stderr,
-                # so search the merged stream.
-                stdout = (proc.stdout or "") + "\n" + (proc.stderr or "")
-                files_match = re.search(
-                    r"Total\s+Files?\s*:\s*([\d,]+)", stdout, re.IGNORECASE
-                )
-                tokens_match = re.search(
-                    r"Total\s+Tokens?\s*:\s*([\d,]+)", stdout, re.IGNORECASE
-                )
-                chars_match = re.search(
-                    r"Total\s+Chars?\s*:\s*([\d,]+)", stdout, re.IGNORECASE
-                )
-
-                if files_match:
-                    result.total_files = int(files_match.group(1).replace(",", ""))
-                if tokens_match:
-                    result.total_tokens = int(tokens_match.group(1).replace(",", ""))
-                if chars_match:
-                    result.total_chars = int(chars_match.group(1).replace(",", ""))
-
-                # File stats
-                if output_file.exists():
-                    result.output_file = str(output_file)
-                    result.output_size_bytes = output_file.stat().st_size
-                    result.output_hash = self._file_hash(output_file)
-
-                    # If we couldn't parse from stdout, count from file
-                    if result.total_chars == 0:
-                        result.total_chars = result.output_size_bytes
-            else:
-                result.error = proc.stderr[:500]
-                logger.warning(f"Repomix failed: {proc.stderr[:200]}")
-
-                # Fallback: try npx
-                if "not found" in (proc.stderr or "").lower() or proc.returncode == 127:
-                    return self._run_npx_fallback(source_dir, output_file, label, start)
-
-        except subprocess.TimeoutExpired:
-            result.error = f"Timeout after {self.timeout}s"
-            result.duration_seconds = self.timeout
-        except FileNotFoundError:
-            # repomix not in PATH, try npx
-            return self._run_npx_fallback(source_dir, output_file, label, start)
-        except Exception as e:
-            result.error = str(e)
-            result.duration_seconds = round(time.time() - start, 2)
-
-        return result
-
-    def run_comparison(
-        self,
-        source_dir: Path,
-        target_dir: Path,
-        output_dir: Path,
-        source_label: str = "source",
-        target_label: str = "target",
-    ) -> RepomixComparison:
-        """
-        Run repomix on both versions and compare results.
-        """
-        output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-
-        source_output = output_dir / f"repomix-{source_label}.txt"
-        target_output = output_dir / f"repomix-{target_label}.txt"
-
-        comparison = RepomixComparison()
-        comparison.source_result = self.run(source_dir, source_output, source_label)
-        comparison.target_result = self.run(target_dir, target_output, target_label)
-
-        # Compute differences
-        s = comparison.source_result
-        t = comparison.target_result
-        comparison.token_difference = t.total_tokens - s.total_tokens
-        comparison.char_difference = t.total_chars - s.total_chars
-        comparison.file_difference = t.total_files - s.total_files
-        comparison.size_difference = t.output_size_bytes - s.output_size_bytes
-
-        if s.total_tokens > 0:
-            comparison.token_change_pct = round(
-                (comparison.token_difference / s.total_tokens) * 100, 2
+            result.command_used = (
+                f"repomix(python API) style={self.output_style} dir={source_dir}"
             )
-        if s.total_chars > 0:
-            comparison.char_change_pct = round(
-                (comparison.char_difference / s.total_chars) * 100, 2
-            )
+            result.total_files = int(getattr(api_result, "total_files", 0) or 0)
+            result.total_chars = int(getattr(api_result, "total_chars", 0) or 0)
+            result.total_tokens = int(getattr(api_result, "total_tokens", 0) or 0)
 
-        return comparison
-
-    def _run_npx_fallback(
-        self, source_dir: Path, output_file: Path, label: str, start_time: float
-    ) -> RepomixResult:
-        """Fallback to npx repomix."""
-        import time
-
-        result = RepomixResult()
-        # Resolve npx to full path for Windows .cmd compatibility
-        npx_cmd = shutil.which("npx") or "npx"
-        cmd = [npx_cmd, "--yes", "repomix", "."]
-        for pattern in self.exclude:
-            cmd.extend(["--ignore", pattern])
-        cmd.extend(["-o", str(output_file.resolve())])
-        result.command_used = " ".join(cmd)
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-                cwd=str(source_dir),
-            )
-            result.duration_seconds = round(time.time() - start_time, 2)
-
-            if proc.returncode == 0 and output_file.exists():
+            if output_file.exists():
                 result.success = True
                 result.output_file = str(output_file)
                 result.output_size_bytes = output_file.stat().st_size
                 result.output_hash = self._file_hash(output_file)
-
-                merged = (proc.stdout or "") + "\n" + (proc.stderr or "")
-                files_match = re.search(
-                    r"Total\s+Files?\s*:\s*([\d,]+)", merged, re.IGNORECASE
-                )
-                tokens_match = re.search(
-                    r"Total\s+Tokens?\s*:\s*([\d,]+)", merged, re.IGNORECASE
-                )
-                chars_match = re.search(
-                    r"Total\s+Chars?\s*:\s*([\d,]+)", merged, re.IGNORECASE
-                )
-                if files_match:
-                    result.total_files = int(files_match.group(1).replace(",", ""))
-                if tokens_match:
-                    result.total_tokens = int(tokens_match.group(1).replace(",", ""))
-                if chars_match:
-                    result.total_chars = int(chars_match.group(1).replace(",", ""))
+                # Fall back to on-disk size when the API reports no char count.
                 if result.total_chars == 0:
                     result.total_chars = result.output_size_bytes
             else:
-                result.error = (
-                    proc.stderr[:500] if proc.stderr else "npx repomix failed"
-                )
-        except Exception as e:
-            result.error = f"npx fallback failed: {e}"
-            result.duration_seconds = round(time.time() - start_time, 2)
+                result.error = "repomix produced no output file"
+                logger.warning(result.error)
+
+        except Exception as exc:  # noqa: BLE001 - collection is non-fatal
+            result.error = str(exc)
+            result.duration_seconds = round(time.time() - start, 2)
+            logger.warning("Repomix (Python API) failed: %s", exc)
 
         return result
 

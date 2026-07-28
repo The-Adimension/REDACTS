@@ -135,6 +135,7 @@ class HtmlReportRenderer:
         parts: list[str] = []
         p = parts.append
 
+        self._report_purpose(p)
         self._executive_summary(rpt, meta, p)
         self._chain_of_custody(meta, p)
         self._provenance(context.provenance, p)
@@ -152,6 +153,23 @@ class HtmlReportRenderer:
         return self._html_document(title, rpt.overall_risk_level, body)
 
     # -- Section helpers ---------------
+
+    @staticmethod
+    def _report_purpose(p: Callable) -> None:
+        """A short banner explaining what this report is vs. its companions."""
+        p(
+            '<div style="border-left:4px solid #58a6ff;background:#161b22;'
+            'padding:0.8rem 1rem;margin:0 0 1.5rem;border-radius:4px;">'
+            "<p><strong>What this report is.</strong> The <em>Forensic report</em> "
+            "is the primary human-facing deliverable for incident response: "
+            "consolidated findings with chain-of-custody and evidence "
+            "provenance.</p>"
+            '<p style="margin-bottom:0;"><strong>Companion outputs.</strong> '
+            "<code>redacts_audit_*</code> - baseline diff detail (what changed "
+            "vs. the reference release); <code>redacts_sarif_*.json</code> - "
+            "machine-readable raw scanner output for CI/IDE.</p>"
+            "</div>"
+        )
 
     @staticmethod
     def _executive_summary(rpt, meta, p: Callable) -> None:
@@ -726,6 +744,13 @@ class MarkdownReportRenderer:
 
         a(f"# {context.title}")
         a(f"*Generated: {_timestamp_now()} | REDACTS v{_VERSION}*\n")
+
+        a("> **What this report is.** The *Forensic report* is the primary "
+          "human-facing deliverable for incident response: consolidated findings "
+          "with chain-of-custody and evidence provenance. Companion outputs: "
+          "`redacts_audit_*` (baseline diff detail - what changed vs. the "
+          "reference release) and `redacts_sarif_*.json` (machine-readable raw "
+          "scanner output for CI/IDE).\n")
 
         # Executive summary
         a("## 1. Executive Summary\n")

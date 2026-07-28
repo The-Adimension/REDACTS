@@ -30,6 +30,8 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 
+from ..core.subprocess_env import resolve_and_wrap_cmd
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,7 +66,6 @@ class DependencyReport:
     python_version: str = ""
     docker_available: bool = False
     docker_compose_available: bool = False
-    node_available: bool = False
 
     @property
     def all_required_ok(self) -> bool:
@@ -137,6 +138,8 @@ PYTHON_PACKAGES: list[tuple[str, str, bool, str, str]] = [
     # Semgrep Python wrapper is BLOCK-tier; binary runtime is WARN (graceful degradation)
     ("semgrep", "semgrep", True, "1.0.0",
      "AST-based PHP security scanner - primary vulnerability detection"),
+    ("repomix", "repomix", True, "0.5.0",
+     "Compressed codebase representation for analyst review (Python package)"),
     ("playwright", "playwright", True, "1.51.0",
      "Browser automation for DAST (dynamic analysis)"),
     ("pytest_asyncio", "pytest-asyncio", True, "0.24.0",
@@ -151,42 +154,55 @@ _SYSTEM_TOOLS: list[dict] = [
         "binary": "trivy",
         "required": True,
         "description": "Dependency CVE scanner + secret detection",
-        "install_cmd": "Auto-downloaded by REDACTS",
+        "install_cmd": "winget install AquaSecurity.Trivy --source winget (Windows) or brew install trivy (macOS/Linux)",
+        "install_cmd_win": "winget install AquaSecurity.Trivy --source winget",
+        "install_cmd_posix": "brew install trivy or apt install trivy",
         "install_url": "https://aquasecurity.github.io/trivy/latest/getting-started/installation/",
-        "auto_install": True,
+        "auto_install": False,
     },
     {
         "name": "yara",
         "binary": "yara",
         "required": True,
         "description": "Malware signature matching with community rules",
-        "install_cmd": "Auto-downloaded by REDACTS",
+        "install_cmd": "winget install YARA.YARA --source winget (Windows) or brew install yara (macOS/Linux)",
+        "install_cmd_win": "winget install YARA.YARA --source winget",
+        "install_cmd_posix": "brew install yara or apt install yara",
         "install_url": "https://yara.readthedocs.io/en/stable/gettingstarted.html",
-        "auto_install": True,
+        "auto_install": False,
     },
+    {
+        "name": "semgrep",
+        "binary": "semgrep",
+        "required": True,
+        "description": "AST-based PHP security scanner - primary vulnerability detection binary",
+        "install_cmd": "pip install semgrep",
+        "install_cmd_win": "pip install semgrep",
+        "install_cmd_posix": "pip install semgrep or brew install semgrep",
+        "install_url": "https://semgrep.dev/docs/getting-started/",
+        "auto_install": False,
+    },
+    # Repomix is a Python dependency (see PYTHON_PACKAGES), not an external
+    # binary. Node.js and npx were only ever needed to run the old Node-based
+    # repomix on the host - the Python package removed that need. Playwright
+    # (DAST) uses its own bundled Node via ``python -m playwright``, and the
+    # DAST container builds its own Node inside Docker, so neither requires a
+    # host Node.js.
     {
         "name": "docker",
         "binary": "docker",
-        "required": False,
+        "required": True,
+        # DAST-only: never invoked by a static scan. Preflight treats this as a
+        # BLOCK only when the case enables dynamic analysis
+        # ([dynamic].enabled = true); a static-only run degrades it to WARN so
+        # an analyst without Docker is not blocked for a tool their scan never
+        # calls. See run_preflight(dynamic_enabled=...).
+        "dast_only": True,
         "description": "Required for DAST (dynamic application security testing)",
         "install_cmd": "Install Docker Desktop from https://docker.com",
+        "install_cmd_win": "winget install Docker.DockerDesktop --source winget or download from https://docker.com",
+        "install_cmd_posix": "Install Docker Desktop from https://docker.com or brew install --cask docker / apt install docker.io",
         "install_url": "https://docs.docker.com/get-docker/",
-    },
-    {
-        "name": "node",
-        "binary": "node",
-        "required": False,
-        "description": "Required for DAST (Playwright test runner) and Repomix",
-        "install_cmd": "Install from https://nodejs.org or use nvm",
-        "install_url": "https://nodejs.org/en/download/",
-    },
-    {
-        "name": "repomix",
-        "binary": "repomix",
-        "required": False,
-        "description": "Compressed codebase representation for analyst review",
-        "install_cmd": "npm install -g repomix",
-        "install_url": "https://github.com/yamadashy/repomix",
     },
 ]
 
@@ -214,18 +230,27 @@ def fix_hint_for_python(pip_name: str, min_version: str) -> str:
 def fix_hint_for_tool(tool: dict) -> str:
     """Operator-facing remediation message for a missing system tool.
 
-    Uses the tool's ``install_cmd`` when set; otherwise points the
-    operator at ``install_url``.
+    Returns platform-specific installation instructions (Windows vs Linux/macOS).
     """
+    is_win = sys.platform == "win32"
+    if is_win and tool.get("install_cmd_win"):
+        return tool["install_cmd_win"]
+    elif not is_win and tool.get("install_cmd_posix"):
+        return tool["install_cmd_posix"]
+
     cmd = (tool.get("install_cmd") or "").strip()
-    url = (tool.get("install_url") or "").strip()
-    if cmd and cmd != "Auto-downloaded by REDACTS":
+    if cmd:
         return cmd
-    if cmd == "Auto-downloaded by REDACTS":
-        return "run 'python main.py preflight --install' (downloads from contract)"
+
+    url = (tool.get("install_url") or "").strip()
     if url:
         return f"see {url}"
-    return f"install '{tool['binary']}' on PATH"
+
+    binary = tool.get("binary", tool.get("name", "tool"))
+    if is_win:
+        return f"install '{binary}' on PATH or winget install {binary}"
+    else:
+        return f"install '{binary}' on PATH via your package manager (brew/apt)"
 
 
 def requirements_lines(*, include_optional: bool = True) -> list[str]:
@@ -298,12 +323,15 @@ def _check_system_tool(tool: dict) -> DependencyStatus:
 
     binary = tool["binary"]
     path = _resolve_venv_tool(binary)
+    target = path or binary
+
+    hint = fix_hint_for_tool(tool)
 
     if path:
         version = ""
         try:
             proc = subprocess.run(
-                [binary, "--version"],
+                resolve_and_wrap_cmd([target, "--version"]),
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -319,7 +347,7 @@ def _check_system_tool(tool: dict) -> DependencyStatus:
             version=version,
             description=tool["description"],
             category="system",
-            install_cmd=tool.get("install_cmd", ""),
+            install_cmd=hint,
             install_url=tool.get("install_url", ""),
         )
 
@@ -327,10 +355,10 @@ def _check_system_tool(tool: dict) -> DependencyStatus:
         name=tool["name"],
         available=False,
         required=tool["required"],
-        error=f"'{binary}' not found in PATH",
+        error=f"'{binary}' not found in PATH. Fix: {hint}",
         description=tool["description"],
         category="system",
-        install_cmd=tool.get("install_cmd", ""),
+        install_cmd=hint,
         install_url=tool.get("install_url", ""),
     )
 
@@ -339,7 +367,7 @@ def _check_docker_compose() -> bool:
     """Check if docker compose (v2) is available."""
     try:
         proc = subprocess.run(
-            ["docker", "compose", "version"],
+            resolve_and_wrap_cmd(["docker", "compose", "version"]),
             capture_output=True,
             text=True,
             timeout=10,
@@ -405,7 +433,7 @@ def check_dependencies(
                 if compose_ok:
                     try:
                         cp = subprocess.run(
-                            ["docker", "compose", "version"],
+                            resolve_and_wrap_cmd(["docker", "compose", "version"]),
                             capture_output=True, text=True, timeout=10,
                         )
                         compose_ver = cp.stdout.strip().split("\n")[0][:80]
@@ -420,8 +448,6 @@ def check_dependencies(
                     description="Docker Compose v2 (required for DAST)",
                     category="system",
                 ))
-            elif tool["name"] == "node":
-                report.node_available = True
         elif status.required:
             logger.error("  %s - %s", tool["name"], status.error)
         else:

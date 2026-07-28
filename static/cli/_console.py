@@ -22,8 +22,15 @@ def create_console() -> "Console" | None:
 
 
 def cli_print(console: "Console" | None, msg: str, style: str = "") -> None:
-    """Print *msg* via Rich or fall back to plain ``print``."""
+    """Print *msg* via Rich or fall back to plain ``print``.
+
+    ``markup=False`` is deliberate: styling flows through the ``style``
+    argument, and *msg* is literal diagnostic text. With Rich markup enabled,
+    a message that mentions a lowercase ``[section]`` - e.g. ``[security]`` or
+    ``[static]`` from ``case.toml`` - is parsed as a style tag and silently
+    dropped from the output.
+    """
     if console and RICH_AVAILABLE:
-        console.print(msg, style=style)
+        console.print(msg, style=style, markup=False)
     else:
         print(msg)

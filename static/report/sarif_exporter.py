@@ -157,6 +157,11 @@ class SarifExporter:
         tool_decomposition = self._build_tool_decomposition(findings)
 
         run["properties"] = {
+            "redacts:reportPurpose": (
+                "Machine-readable raw scanner output (SARIF 2.1.0) for CI/IDE "
+                "ingestion. Companion outputs: redacts_forensic_* (human-facing "
+                "forensic deliverable) and redacts_audit_* (baseline diff detail)."
+            ),
             "redacts:provenance": prov_data,
             "redacts:tool_decomposition": tool_decomposition,
         }

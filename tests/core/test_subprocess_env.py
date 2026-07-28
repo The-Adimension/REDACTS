@@ -69,3 +69,62 @@ def test_platform_specific_inheritance(valid_case_factory, isolated_search_paths
     else:
         if os.environ.get("HOME"):
             assert env.get("HOME") == os.environ["HOME"]
+
+
+def test_resolve_and_wrap_cmd_empty():
+    from static.core.subprocess_env import resolve_and_wrap_cmd
+    assert resolve_and_wrap_cmd([]) == []
+
+
+def test_resolve_and_wrap_cmd_windows_batch(monkeypatch, tmp_path):
+    import sys
+    from static.core.subprocess_env import resolve_and_wrap_cmd
+
+    cmd_file = tmp_path / "test_tool.cmd"
+    cmd_file.write_text("@echo off", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    wrapped = resolve_and_wrap_cmd([str(cmd_file), "arg1"])
+    assert len(wrapped) >= 4
+    assert wrapped[1:3] == ["/d", "/c"]
+    assert wrapped[3] == str(cmd_file)
+    assert wrapped[4] == "arg1"
+
+
+def test_resolve_and_wrap_cmd_windows_batch_space_in_path(monkeypatch, tmp_path):
+    import sys
+    from static.core.subprocess_env import resolve_and_wrap_cmd
+
+    dir_with_space = tmp_path / "folder with spaces"
+    dir_with_space.mkdir()
+    cmd_file = dir_with_space / "test_tool.cmd"
+    cmd_file.write_text("@echo off", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    wrapped = resolve_and_wrap_cmd([str(cmd_file), "arg with spaces"])
+    assert len(wrapped) >= 4
+    assert wrapped[1:3] == ["/d", "/c"]
+    assert wrapped[3] == str(cmd_file)
+    assert wrapped[4] == "arg with spaces"
+
+
+
+def test_resolve_and_wrap_cmd_windows_ps1_is_refused(monkeypatch, tmp_path):
+    """``.ps1`` is not runnable without ``-ExecutionPolicy Bypass``, so we refuse.
+
+    Issuing that bypass implicitly would let any ``.ps1`` dropped into the
+    auto-install tools directory run with the machine's policy disabled.
+    """
+    import sys
+
+    import pytest
+
+    from static.core.subprocess_env import UnsafeCommandError, resolve_and_wrap_cmd
+
+    ps_file = tmp_path / "script.ps1"
+    ps_file.write_text("Write-Output 1", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    with pytest.raises(UnsafeCommandError, match="execution policy"):
+        resolve_and_wrap_cmd([str(ps_file), "--flag"])
+

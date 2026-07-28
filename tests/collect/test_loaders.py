@@ -178,3 +178,81 @@ class TestFTPLoaderSecurity:
             mock_sftp.get.assert_called_once_with("/remote/path.zip", str(local_path))
             mock_sftp.close.assert_called_once()
             mock_client_instance.close.assert_called_once()
+
+
+# ---------- REDCap root detection ----------
+
+
+class TestDetectRedcapRoot:
+    """detect_redcap_root must align the official source package with a deploy.
+
+    The official REDCap distribution nests the versioned application under
+    ``redcap/redcap_vX.Y.Z/`` behind a thin installer wrapper that *also*
+    carries marker files. A deployed tree exposes that same application at its
+    top level. Root detection must descend to the versioned application root so
+    the two share relative paths - otherwise a baseline diff sees every file as
+    added/removed.
+    """
+
+    @staticmethod
+    def _touch(p: Path) -> None:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("x", encoding="utf-8")
+
+    def _markers(self, directory: Path) -> None:
+        for m in ("redcap_connect.php", "database.php", "cron.php"):
+            self._touch(directory / m)
+
+    def test_descends_into_versioned_app_root(self, tmp_path: Path) -> None:
+        from static.collect.loaders import detect_redcap_root
+
+        self._markers(tmp_path / "redcap")  # installer wrapper
+        self._markers(tmp_path / "redcap" / "redcap_v15.7.4")  # versioned app
+        self._touch(tmp_path / "redcap" / "redcap_v15.7.4" / "API" / "index.php")
+
+        root = detect_redcap_root(tmp_path)
+        assert root == tmp_path / "redcap" / "redcap_v15.7.4"
+
+    def test_deployed_tree_without_versioned_subdir_is_unchanged(self, tmp_path: Path) -> None:
+        from static.collect.loaders import detect_redcap_root
+
+        self._markers(tmp_path / "redcap_v15.7.4-server")
+        self._touch(tmp_path / "redcap_v15.7.4-server" / "API" / "index.php")
+
+        root = detect_redcap_root(tmp_path)
+        assert root == tmp_path / "redcap_v15.7.4-server"
+
+    def test_markers_at_top_level_returns_top(self, tmp_path: Path) -> None:
+        from static.collect.loaders import detect_redcap_root
+
+        self._markers(tmp_path)
+        assert detect_redcap_root(tmp_path) == tmp_path
+
+    def test_top_level_with_versioned_child_descends(self, tmp_path: Path) -> None:
+        from static.collect.loaders import detect_redcap_root
+
+        self._markers(tmp_path)
+        self._markers(tmp_path / "redcap_v15.7.4")
+        assert detect_redcap_root(tmp_path) == tmp_path / "redcap_v15.7.4"
+
+    def test_highest_version_wins(self, tmp_path: Path) -> None:
+        from static.collect.loaders import detect_redcap_root
+
+        self._markers(tmp_path / "redcap")
+        self._markers(tmp_path / "redcap" / "redcap_v15.6.0")
+        self._markers(tmp_path / "redcap" / "redcap_v15.7.4")
+        assert detect_redcap_root(tmp_path) == tmp_path / "redcap" / "redcap_v15.7.4"
+
+    def test_no_markers_returns_path_unchanged(self, tmp_path: Path) -> None:
+        from static.collect.loaders import detect_redcap_root
+
+        (tmp_path / "random").mkdir()
+        assert detect_redcap_root(tmp_path) == tmp_path
+
+    def test_versioned_child_without_markers_is_not_chosen(self, tmp_path: Path) -> None:
+        """A redcap_v* dir that lacks markers is not a valid app root."""
+        from static.collect.loaders import detect_redcap_root
+
+        self._markers(tmp_path / "redcap")
+        (tmp_path / "redcap" / "redcap_v15.7.4").mkdir(parents=True)  # no markers
+        assert detect_redcap_root(tmp_path) == tmp_path / "redcap"

@@ -158,6 +158,8 @@ class RepomixConfig:
     command: str = "repomix"
     exclude_patterns: list[str] = field(
         default_factory=lambda: [
+            "**/repomix-output.*",
+            "repomix-output.*",
             "*.map",
             "vendor/**",
             "node_modules/**",

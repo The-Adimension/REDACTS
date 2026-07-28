@@ -31,12 +31,30 @@ the allowlist mechanism.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# Bundled-source artifacts: single files that concatenate an entire codebase
+# (a Repomix dump is the canonical case). Content-scanning them re-detects every
+# pattern in the bundled source, flooding the report with hundreds of findings
+# that are not distinct threats. They are still reported as structural additions
+# (see ``files_added``) and still content-type-checked by Magika - they are just
+# excluded from line-by-line content scanning. Match on basename, case-folded.
+_BUNDLED_ARTIFACT_PATTERNS: tuple[str, ...] = (
+    "repomix-output.*",   # Repomix codebase bundle (any format: txt/md/xml/json)
+    "repomix-output",
+)
+
+
+def _is_bundled_artifact(rel_path: str) -> bool:
+    """True if *rel_path* is a recognised whole-codebase bundle artifact."""
+    name = rel_path.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    return any(fnmatch.fnmatch(name, pat) for pat in _BUNDLED_ARTIFACT_PATTERNS)
 
 from ..core.findings import SeverityStr
 from ..core.hashing import hash_tree as _canonical_hash_tree
@@ -119,8 +137,18 @@ class StructuralDiffResult:
     # Convenience
     @property
     def delta_files(self) -> set[str]:
-        """The union of *added* + *modified* - the files that need deep analysis."""
-        return set(self.files_added) | set(self.files_modified)
+        """Added + modified files that need deep analysis.
+
+        Bundled-source artifacts (e.g. a ``repomix-output.*`` dump) are excluded
+        from this set: they concatenate an entire codebase into one file, so
+        content-scanning them re-detects every pattern in the source and floods
+        the report with non-distinct findings. They remain in ``files_added`` /
+        ``findings`` (so the structural anomaly is still surfaced) and are still
+        content-type-checked by Magika (so a masquerading payload is still
+        caught) - they are only skipped for line-by-line content scanning.
+        """
+        changed = set(self.files_added) | set(self.files_modified)
+        return {f for f in changed if not _is_bundled_artifact(f)}
 
     @property
     def is_clean(self) -> bool:

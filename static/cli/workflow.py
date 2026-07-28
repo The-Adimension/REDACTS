@@ -36,12 +36,180 @@ from typing import TYPE_CHECKING
 from ._console import RICH_AVAILABLE, cli_print
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from rich.console import Console
     from .dependencies import DependencyReport
 
 logger = logging.getLogger(__name__)
 
 
+# Tool-backed scanners selectable via ``[static].scanners``. ``regex`` needs no
+# external tool; the rest are gated on availability as well as selection.
+KNOWN_SCANNERS: frozenset[str] = frozenset({"regex", "yara", "trivy", "semgrep"})
+
+
+def select_scanners(
+    selected: "tuple[str, ...] | None",
+    tool_ok: "Callable[[str], bool]",
+) -> "tuple[dict[str, bool], list[tuple[str, bool]]]":
+    """Decide which scanners run, honoring the contract's selection.
+
+    A tool-backed scanner (semgrep/trivy/yara) runs iff it is **both** selected
+    in ``[static].scanners`` **and** installed. ``regex`` needs only selection.
+    This mirrors how ``[static].severity_gate`` is treated: the contract is the
+    source of truth, not merely "whatever happens to be installed".
+
+    Args:
+        selected: Scanner names from the contract, or ``None`` when no contract
+            is installed (fall back to "run whatever is installed").
+        tool_ok: ``callable(name) -> bool`` reporting whether a tool is present.
+
+    Returns:
+        ``(enables, notices)`` where ``enables`` maps
+        ``semgrep``/``trivy``/``yara``/``regex`` to booleans, and ``notices`` is
+        a list of ``(message, is_gap)`` pairs: ``is_gap`` marks a real coverage
+        loss (selected-but-missing, or an unknown scanner name) versus an
+        informational skip (installed-but-not-selected).
+    """
+    chosen = None if selected is None else {s.strip().lower() for s in selected}
+    notices: list[tuple[str, bool]] = []
+
+    def _enabled(name: str) -> bool:
+        installed = tool_ok(name)
+        if chosen is None:
+            return installed
+        is_selected = name in chosen
+        if is_selected and not installed:
+            notices.append(
+                (
+                    f"{name}: selected in [static].scanners but not installed "
+                    "- skipped (no coverage from this scanner)",
+                    True,
+                )
+            )
+        elif installed and not is_selected:
+            notices.append(
+                (
+                    f"{name}: installed but not selected in [static].scanners "
+                    "- skipped by choice",
+                    False,
+                )
+            )
+        return is_selected and installed
+
+    enables = {
+        "semgrep": _enabled("semgrep"),
+        "trivy": _enabled("trivy"),
+        "yara": _enabled("yara"),
+        "regex": chosen is None or "regex" in chosen,
+    }
+
+    # Surface names the contract lists but REDACTS does not recognise, so a
+    # typo cannot silently reduce coverage.
+    if chosen is not None:
+        for name in sorted(chosen - KNOWN_SCANNERS):
+            notices.append(
+                (f"unknown scanner '{name}' in [static].scanners - ignored", True)
+            )
+
+    return enables, notices
+
+
+def _severity_rank(sev: "str | object | None") -> "int | None":
+    """Best-effort numeric rank for a severity value from any layer.
+
+    Accepts a ``SeverityLevel`` (uses its ``numeric_rank``) or a string
+    (parsed via ``SeverityLevel.from_string``). Returns ``None`` for values
+    that are not real severities - notably ``"CLEAN"`` and empty/unknown
+    strings - so they never trip the gate.
+    """
+    from ..core.findings import SeverityLevel
+
+    if sev is None:
+        return None
+    rank = getattr(sev, "numeric_rank", None)
+    if isinstance(rank, int):
+        return rank
+    try:
+        return SeverityLevel.from_string(str(sev)).numeric_rank
+    except (ValueError, AttributeError):
+        return None
+
+
+def evaluate_severity_gate(
+    gate: str,
+    *,
+    orchestrator_findings: "object | None" = None,
+    investigation_findings: "object | None" = None,
+    baseline_findings: "object | None" = None,
+    overall_risk: "str | None" = None,
+) -> "tuple[bool, dict[str, int]]":
+    """Decide whether the scan trips the ``[static].severity_gate``.
+
+    The gate must reflect **every** analysis layer, not just the tool scan.
+    A forensic finding (investigation), a structural change (baseline), or a
+    holistic CRITICAL/HIGH verdict (``overall_risk``) must be able to fail CI
+    just as a tool-scan finding does - otherwise a compromised deployment can
+    exit 0. See the severity-gate regression this closes.
+
+    Args:
+        gate: The configured gate level (e.g. ``"high"``).
+        orchestrator_findings: Iterable of tool-scan findings (objects with a
+            ``.severity`` carrying ``.numeric_rank``).
+        investigation_findings: Iterable of investigation finding dicts, each
+            with a ``"severity"`` string.
+        baseline_findings: Iterable of baseline structural finding dicts, each
+            with a ``"severity"`` string.
+        overall_risk: The audit's holistic risk level string, or ``None``.
+
+    Returns:
+        ``(triggered, breakdown)`` - ``triggered`` is ``True`` if any source
+        has a finding at or above the gate, or ``overall_risk`` is at or above
+        it. ``breakdown`` maps each contributing source to its count (findings)
+        or ``1`` (overall_risk), for a transparent message. Empty breakdown
+        means nothing tripped.
+
+    Raises:
+        ValueError: If *gate* is not a valid severity level.
+    """
+    from ..core.findings import SeverityLevel
+
+    gate_rank = SeverityLevel.from_string(gate).numeric_rank
+    breakdown: dict[str, int] = {}
+
+    def _count(findings: "object | None", severity_of) -> int:
+        if not findings:
+            return 0
+        n = 0
+        for f in findings:
+            rank = severity_of(f)
+            if rank is not None and rank >= gate_rank:
+                n += 1
+        return n
+
+    tool_n = _count(
+        orchestrator_findings, lambda f: _severity_rank(getattr(f, "severity", None))
+    )
+    inv_n = _count(
+        investigation_findings, lambda f: _severity_rank(f.get("severity"))
+    )
+    base_n = _count(
+        baseline_findings, lambda f: _severity_rank(f.get("severity"))
+    )
+
+    if tool_n:
+        breakdown["tool-scan"] = tool_n
+    if inv_n:
+        breakdown["investigation"] = inv_n
+    if base_n:
+        breakdown["baseline"] = base_n
+
+    risk_rank = _severity_rank(overall_risk)
+    if risk_rank is not None and risk_rank >= gate_rank:
+        breakdown["overall-risk"] = 1
+
+    return (bool(breakdown), breakdown)
 
 
 def _phase_evidence(
@@ -184,6 +352,27 @@ def _phase_orchestration(
                 return True
             return any(c.available for c in dep_report.checks if c.name == name)
 
+        # Honor the contract's ``[static].scanners`` selection. The contract
+        # is the source of truth (exactly as ``[static].severity_gate`` is):
+        # a tool-backed scanner runs only if it is BOTH selected in the
+        # contract AND installed. Previously enablement came only from "is it
+        # installed", so the analyst's scanner selection was silently ignored.
+        from ..core.runtime_context import get_optional_contract
+
+        _contract = get_optional_contract()
+        selected = (
+            tuple(_contract.static.scanners) if _contract is not None else None
+        )
+        enables, notices = select_scanners(selected, _tool_ok)
+        for message, is_gap in notices:
+            cli_print(
+                console,
+                f"  {'!' if is_gap else '-'} {message}",
+                style="yellow" if is_gap else "dim",
+            )
+            if is_gap:
+                runtime_gaps.append(message)
+
         # DAST is gated by the case contract's ``[dynamic].enabled``
         # flag, which ``REDACTSConfig.from_contract`` projects onto
         # ``config.dast.enabled``. Hard-coding ``True`` here would
@@ -193,9 +382,10 @@ def _phase_orchestration(
         # something the analyst said no to" failure the contract is
         # supposed to prevent.
         orch_config = OrchestratorConfig(
-            enable_semgrep=_tool_ok("semgrep"),
-            enable_trivy=_tool_ok("trivy"),
-            enable_yara=_tool_ok("yara"),
+            enable_semgrep=enables["semgrep"],
+            enable_trivy=enables["trivy"],
+            enable_yara=enables["yara"],
+            enable_regex_scanner=enables["regex"],
             enable_dast=bool(config.dast.enabled),
             redcap_version=redcap_version,
             dast_package=str(target),
@@ -327,11 +517,10 @@ def _phase_reports(
                 all_gaps.append(gap)
 
     # Drop the "repomix unavailable" coverage gap when the evidence
-    # collector actually produced a repomix snapshot via the node/npx
-    # path. The orchestrator's `tool_availability` flag tracks the
-    # Python `repomix` package, but the snapshot is produced by the
-    # node CLI inside the collector - having both the gap and a
-    # repomix artifact in the same output dir is self-contradictory.
+    # collector actually produced a repomix snapshot. A phase may flag
+    # repomix as unavailable while the collector still wrote a snapshot
+    # (via the repomix Python package) earlier in the run - keeping both
+    # the gap and the artifact in the same output dir is self-contradictory.
     repomix_artifact = ""
     if package is not None:
         repomix_artifact = str(getattr(package, "repomix_path", "") or "")
@@ -682,12 +871,14 @@ def step_run_scan(
     # Exit-code policy:
     # The historical policy ("0 if no errors else 1") meant a clean run
     # with 50 HIGH-severity findings exited 0 - silently passing CI.
-    # The contract's ``[static].severity_gate`` was parsed but never
-    # consumed. Now:
+    # The contract's ``[static].severity_gate`` gates the exit code. The gate
+    # spans EVERY analysis layer - tool scan, deep investigation, baseline
+    # structural changes, and the holistic risk verdict - so a compromised
+    # deployment cannot exit 0 just because the tool-scan layer was empty:
     #
-    #   * Any phase-level error               -> exit 1
-    #   * Any finding at or above the gate    -> exit 2 (gate triggered)
-    #   * Otherwise                           -> exit 0
+    #   * Any phase-level error                          -> exit 1
+    #   * Any finding (any layer) >= gate, or risk >= gate -> exit 2
+    #   * Otherwise                                       -> exit 0
     #
     # Exit 2 is distinct from exit 1 so CI can tell "the scan worked
     # and found real issues" apart from "the scan itself broke".
@@ -695,37 +886,45 @@ def step_run_scan(
 
     try:
         from ..core.runtime_context import get_optional_contract
-        from ..core.findings import SeverityLevel
 
         contract = get_optional_contract()
-        if contract is not None and orchestrator is not None:
-            gate_str = (contract.static.severity_gate or "").strip().lower()
-            if gate_str:
-                try:
-                    gate_level = SeverityLevel.from_string(gate_str)
-                except ValueError:
-                    logger.warning(
-                        "Invalid severity_gate %r in contract - "
-                        "skipping enforcement.", gate_str,
-                    )
-                    gate_level = None
+        gate_str = (
+            (contract.static.severity_gate or "").strip().lower()
+            if contract is not None
+            else ""
+        )
+        if gate_str:
+            inv = (audit_result.investigation or {}) if audit_result else {}
+            base = (audit_result.baseline_diff or {}) if audit_result else {}
+            try:
+                triggered, breakdown = evaluate_severity_gate(
+                    gate_str,
+                    orchestrator_findings=(
+                        orchestrator.findings.findings if orchestrator else None
+                    ),
+                    investigation_findings=inv.get("findings"),
+                    baseline_findings=base.get("findings"),
+                    overall_risk=(
+                        audit_result.overall_risk_level if audit_result else None
+                    ),
+                )
+            except ValueError:
+                logger.warning(
+                    "Invalid severity_gate %r in contract - skipping enforcement.",
+                    gate_str,
+                )
+                triggered, breakdown = False, {}
 
-                if gate_level is not None:
-                    gate_rank = gate_level.numeric_rank
-                    triggers = [
-                        f for f in orchestrator.findings.findings
-                        if f.severity.numeric_rank >= gate_rank
-                    ]
-                    if triggers:
-                        cli_print(
-                            console,
-                            f"  Severity gate '{gate_level.value}' triggered: "
-                            f"{len(triggers)} finding(s) at or above gate.",
-                            style="bold red",
-                        )
-                        # Gate trumps "no errors -> 0" but does not
-                        # downgrade an existing phase-level failure.
-                        exit_code = max(exit_code, 2)
+            if triggered:
+                detail = ", ".join(f"{src}: {n}" for src, n in breakdown.items())
+                cli_print(
+                    console,
+                    f"  Severity gate '{gate_str}' triggered [{detail}].",
+                    style="bold red",
+                )
+                # Gate trumps "no errors -> 0" but does not downgrade an
+                # existing phase-level failure.
+                exit_code = max(exit_code, 2)
     except Exception:  # pragma: no cover - gate evaluation must never
         # itself crash the CLI; log and fall back to phase-error policy.
         logger.exception("Severity-gate evaluation failed")

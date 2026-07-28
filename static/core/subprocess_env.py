@@ -23,6 +23,8 @@ Licensed under the Apache License, Version 2.0.
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Mapping
@@ -146,4 +148,148 @@ def minimal_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
     return env
 
 
-__all__ = ["build", "minimal_env"]
+def _is_windows() -> bool:
+    """Platform probe read at call time so tests can simulate Windows."""
+    return sys.platform == "win32" or os.name == "nt"
+
+
+# Characters cmd.exe treats as metacharacters. ``subprocess`` quotes arguments
+# for the MSVCRT argument parser via ``list2cmdline``, but cmd.exe parses the
+# command line *before* that runs, so an unquoted one of these inside an
+# argument is a command separator, not data. There is no fully sound escaping
+# for this (``%VAR%`` expansion happens ahead of quote processing and cannot be
+# suppressed), which is why we resolve shims away instead of escaping.
+_CMD_METACHARACTERS = frozenset('&|<>^()"%!\r\n')
+
+# npm-generated ``.cmd`` shims end in a line equivalent to
+#   "%_prog%" "%dp0%\node_modules\<pkg>\bin\<entry>.cjs" %*
+# The ``%*`` is what cmd.exe re-expands, so the embedded entry path is the
+# thing we want to hand to node directly.
+_NPM_SHIM_ENTRY_RE = re.compile(
+    r'%dp0%[\\/]([^"%\r\n]+?\.(?:cjs|mjs|js))',
+    re.IGNORECASE,
+)
+
+
+class UnsafeCommandError(ValueError):
+    """An argument cannot reach a Windows script shim without shell injection."""
+
+
+def _resolve_npm_shim(shim: Path) -> list[str] | None:
+    """Resolve an npm ``.cmd`` wrapper to a direct ``[node, entry_script]`` call.
+
+    Returns ``None`` when *shim* is not a recognisable npm wrapper, when the
+    entry script it names is missing, or when no node executable can be found -
+    in which case the caller falls back to the guarded cmd.exe path.
+    """
+    try:
+        text = shim.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+    match = _NPM_SHIM_ENTRY_RE.search(text)
+    if match is None:
+        return None
+
+    entry = shim.parent / match.group(1).replace("\\", os.sep).replace("/", os.sep)
+    if not entry.is_file():
+        return None
+
+    # The shim itself prefers a node.exe sitting beside it before falling back
+    # to PATH; mirror that so a bundled node keeps winning.
+    local_node = shim.parent / "node.exe"
+    node = str(local_node) if local_node.is_file() else shutil.which("node")
+    if not node:
+        return None
+
+    return [node, str(entry)]
+
+
+def _reject_cmd_metacharacters(target: str, args: list[str]) -> None:
+    """Raise if any part of a cmd.exe-bound invocation would be reinterpreted."""
+    for value in (target, *args):
+        bad = sorted(_CMD_METACHARACTERS.intersection(value))
+        if bad:
+            raise UnsafeCommandError(
+                f"refusing to run Windows script shim {target!r}: argument "
+                f"{value!r} contains cmd.exe metacharacter(s) {''.join(bad)!r} "
+                "that cmd.exe would execute as a command. Install the tool as a "
+                "native executable, or move the input to a path without these "
+                "characters."
+            )
+
+
+def resolve_and_wrap_cmd(
+    cmd: list[str],
+    *,
+    env: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Resolve ``cmd[0]`` to a directly-executable program.
+
+    On Windows a ``.cmd``/``.bat`` shim cannot be handed to CreateProcessW
+    (WinError 193), and routing it through ``cmd.exe /c`` re-exposes every
+    argument to the shell - a path such as ``target.zip&whoami`` becomes two
+    commands. Since REDACTS passes attacker-influenced paths from the archive
+    under analysis, that is a command-injection sink.
+
+    Resolution order on Windows:
+
+    1. Not a script shim - return the resolved path unchanged (the common case:
+       ``trivy.exe``, ``yara.exe``, and pip console scripts such as
+       ``semgrep.exe``, which are real PE launchers).
+    2. An npm ``.cmd`` wrapper - rewrite to ``[node, entry.cjs, *args]`` so the
+       shell is never involved.
+    3. Any other batch wrapper - cmd.exe is unavoidable, so refuse arguments it
+       would reinterpret rather than emit an injectable command line.
+
+    ``.ps1`` is deliberately unsupported: running one requires an
+    ``-ExecutionPolicy Bypass`` that we are not willing to issue implicitly.
+
+    Raises:
+        UnsafeCommandError: when the invocation cannot be made safely.
+    """
+    if not cmd:
+        return cmd
+
+    exe_name = str(cmd[0])
+    args = [str(a) for a in cmd[1:]]
+
+    path_str = env.get("PATH") if env is not None else None
+    if path_str is None:
+        path_str = os.environ.get("PATH", "")
+
+    resolved = shutil.which(exe_name, path=path_str) if path_str else shutil.which(exe_name)
+    target = resolved or exe_name
+
+    if not _is_windows():
+        return [target, *args]
+
+    target_lower = target.lower()
+
+    if target_lower.endswith(".ps1"):
+        raise UnsafeCommandError(
+            f"refusing to run PowerShell script {target!r}: executing it would "
+            "require bypassing the machine's execution policy. Install the tool "
+            "as a native executable instead."
+        )
+
+    if not target_lower.endswith((".cmd", ".bat")):
+        return [target, *args]
+
+    npm_invocation = _resolve_npm_shim(Path(target))
+    if npm_invocation is not None:
+        return [*npm_invocation, *args]
+
+    _reject_cmd_metacharacters(target, args)
+    comspec = (env.get("COMSPEC") if env is not None else None) or os.environ.get(
+        "COMSPEC", "cmd.exe"
+    )
+    return [comspec, "/d", "/c", target, *args]
+
+
+__all__ = [
+    "build",
+    "minimal_env",
+    "resolve_and_wrap_cmd",
+    "UnsafeCommandError",
+]

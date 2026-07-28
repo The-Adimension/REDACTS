@@ -37,8 +37,13 @@ htmlcov/
 Thumbs.db
 desktop.ini
 
-# Local case file (per-engagement; case.example.toml is the template)
+# Per-engagement case files - these carry real paths and credentials and must
+# never be committed. Only case.example.toml (placeholder values) is tracked.
 case.toml
+case.toml.lock
+case.compare_*.toml
+real_user_case.toml
+*_SAnwer.toml
 
 # Local case input staging (REDCap source archives, dumps, etc.)
 .archive/

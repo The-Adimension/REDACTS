@@ -14,14 +14,17 @@
 
 ### 1.1 Requirements
 
-- Python **3.12 or newer** (3.14 tested). The pipeline runs on the
-  system interpreter; a virtual environment is recommended but not
-  bundled with the repository.
-- Optional native tools used by static scanners (Trivy, YARA, Semgrep,
-  repomix, Magika). Missing optional tools are reported as **WARN** by
-  preflight and degrade coverage; they do not block the scan.
-- Docker with the **Compose v2** plugin if dynamic (DAST) mode is
-  enabled. Verify with `docker compose version`.
+- Python **3.13 (recommended) or 3.12**. **Not 3.14** - Semgrep's engine
+  does not run on 3.14 (see the note below). A virtual environment is
+  recommended but not bundled with the repository.
+- Native scanner binaries **Trivy**, **YARA**, and **Semgrep** on
+  `PATH`. Semgrep, Repomix, and Magika are Python packages installed
+  with the project (`pip install -r requirements.txt`); Repomix no longer
+  needs Node.js, and `node`/`npx` are not required on the host.
+- Docker with the **Compose v2** plugin **only if dynamic (DAST) mode is
+  enabled** (`[dynamic].enabled = true`). Verify with `docker compose
+  version`. For a static-only scan, a missing Docker is a **WARN**, not a
+  blocker.
 
 Notes on Windows installs:
 
@@ -31,21 +34,27 @@ Notes on Windows installs:
   `sysconfig`; for other tools either add the directory to `PATH`,
   install system-wide, or drop the binary into
   `contract.paths.tools_root` (auto-prepended to `PATH`).
-- Semgrep has no Python 3.14 wheel at the time of writing. On 3.14 the
-  binary resolves but its internal `pysemgrep` subprocess fails;
-  REDACTS reports it as a runtime gap and continues.
+- **Semgrep and Python 3.14.** Semgrep installs on 3.14 (its wheel allows
+  it) but its bundled engine does not run there - it exits without emitting
+  output. REDACTS detects this: `preflight` fails Semgrep as **non-functional**
+  (not merely "found"), and the scan reports it as a gap rather than a clean
+  "0 findings". Run on Python **3.13 or 3.12** for real Semgrep coverage.
 
 ### 1.2 Quick start
 
 ```powershell
-python -m venv .venv
+python -m venv .venv                    # use Python 3.13 or 3.12
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt -r requirements-dev.txt
 
-Copy-Item case.example.toml case.toml   # then edit case.toml for your case
-python main.py paths                    # show where artifacts go
+# Create the case file interactively (recommended). Point --target at the
+# installation under review and --reference at a known-good REDCap release
+# of the same version; init hashes them and detects available scanners.
+python main.py init --target .\target.zip --reference .\reference.zip
+#   (Or hand-edit the template: Copy-Item case.example.toml case.toml)
+
 python main.py preflight                # verify the environment
-python main.py update                   # refresh threat data (optional)
+python main.py update cwe               # fetch the CWE catalog for full enrichment
 python main.py scan                     # mode comes from case.toml
 ```
 
@@ -269,9 +278,8 @@ python main.py update cwe            # single source
 python main.py update --no-confirm   # for CI
 ```
 
-On first run, the CWE CSV is absent; preflight and the orchestrator
-log `CWE CSV not found at threat_base/data/cwec_v4.19.csv` and CWE
-enrichment is silently degraded until `update cwe` runs.
+On first run the CWE CSV is absent. See Sec.4.6 for exactly what the
+scan does about it.
 
 ### 4.3 Static scan
 
@@ -279,7 +287,19 @@ enrichment is silently degraded until `update cwe` runs.
 python main.py scan --mode static
 ```
 
-Reports land under `contract.paths.output_root`.
+Reports land under `contract.paths.output_root` (default
+`output/scan_<timestamp>/`). A single scan writes **three kinds of report** -
+read them in this order:
+
+| Report | Files | What it is / when to read it |
+|---|---|---|
+| **Forensic** | `redacts_forensic_*.{html,md,json}` | **Start here.** The primary human-facing deliverable: consolidated findings with chain-of-custody and evidence provenance. This is what you hand to an incident-response reviewer. |
+| **Audit** | `audit/reports/redacts_audit_*.{html,md,json}` | The baseline diff plus deep analysis of *what changed* versus the known-good reference release. Read it to see exactly which files were added/modified and what those changes contain. |
+| **SARIF** | `redacts_sarif_*.json` | Machine-readable raw scanner output (SARIF 2.1.0) for CI dashboards and IDE plugins - not meant to be read by a human directly. |
+
+Each report also states its own purpose and names its companions in its header,
+so they can't be confused once opened. The HTML versions are self-contained
+(open in any browser; no internet needed).
 
 ### 4.4 Dynamic (DAST) scan
 
@@ -308,6 +328,37 @@ A scan that completes with a failed tool still produces reports for
 the tools that ran; the reports record which scanners contributed and
 which did not.
 
+### 4.6 Reduced CWE enrichment (missing CWE data)
+
+The CWE ("Common Weakness Enumeration") catalog is MITRE's public list
+of software-weakness types. REDACTS uses it to *label* findings with a
+CWE ID, name, description, and mitigation guidance. It is enrichment,
+not detection: with the catalog absent, the scanners still find the
+same issues - each finding just carries less classification context.
+
+If the CWE CSV (`threat_base/data/cwec_v4.19.csv`) is missing when a
+scan starts, REDACTS prints a one-time **Reduced CWE enrichment**
+notice up front and then continues. It does **not** prompt, and it does
+**not** download anything on its own - the scan path is non-interactive
+by design so it runs unattended in CI and pipelines.
+
+The notice states that the scan is continuing and how to obtain the
+full data. If you would rather have full enrichment, stop the scan
+(`Ctrl+C`) and install the catalog first, by either method:
+
+- **Automatic** (needs network; unavailable when
+  `[security].network_disabled = true`):
+
+  ```powershell
+  python main.py update cwe
+  ```
+
+- **Manual / offline**: on any machine with internet access, download
+  the CWE CSV from <https://cwe.mitre.org/data/csv/1000.csv.zip> and
+  place the extracted `cwec_v4.19.csv` into `threat_base/data/`.
+
+Then re-run the scan. The notice disappears once the file is present.
+
 ---
 
 ## 5. Troubleshooting
@@ -316,12 +367,13 @@ which did not.
 |---|---|
 | `paths` shows `[missing]` for `temp` / `cache` | First run; the directory is created lazily on first use. Run `preflight` to materialize it. |
 | Preflight reports `'<tool>' not found on PATH` | Drop the binary into `contract.paths.tools_root` (auto-prepended to `PATH`) or install it system-wide. On Windows, `pip install --user` places scripts in `%APPDATA%\Python\Python<ver>\Scripts\`, which is not on `PATH` by default. |
-| `Semgrep: scan failed - executing pysemgrep failed` on Python 3.14 | Upstream incompatibility: Semgrep has no 3.14 wheel yet. The phase is reported as a runtime gap and the rest of the pipeline continues. Pin Python 3.13 to recover Semgrep coverage. |
+| Preflight: `semgrep ... installed but not functional` / scan: `Semgrep exited cleanly but produced no SARIF output` | You are on Python 3.14, where Semgrep's engine does not run. This is not a false alarm - Semgrep produced **no** coverage. Recreate your environment on Python **3.13 or 3.12** and re-run. (Earlier versions silently reported "0 findings" here; REDACTS now surfaces it instead of masking it.) |
 | `docker compose` rejects `-f` with `unknown shorthand flag` | Compose v1 (the deprecated `docker-compose` Python wrapper) is on `PATH` ahead of the Compose v2 plugin, or the v2 plugin is missing. Install / upgrade Docker so that `docker compose version` succeeds, then re-run. |
 | `--mode full` followed by `--mode dynamic` | `full` already invokes DAST inside the static pipeline. Run one of the two, not both. |
 | Captured `.log` lags minutes behind the actual run on Windows PowerShell 5.1 | Set `$env:PYTHONUNBUFFERED = '1'` before invoking `main.py` so writes are flushed line-by-line. |
 | Scan exits `2` on a clean-looking run | Severity gate triggered. Check the `Severity gate '<level>' triggered: N finding(s) at or above gate.` line at the end of the output. Lower the gate in `[static].severity_gate` if the policy is wrong, or treat the findings. |
 | `[FATAL] case.toml is invalid: sha256 mismatch` / `path does not exist` | Contract validation refused the run. The hash in `[inputs.target].sha256` no longer matches the file on disk, or the path was moved. Recompute and update `case.toml`. |
+| `[NOTICE] Reduced CWE enrichment` at scan start | The CWE catalog is not installed. Findings are still detected but not labelled with CWE IDs. Install it with `python main.py update cwe` (or the manual method) and re-run. See Sec.4.6. |
 
 ---
 
