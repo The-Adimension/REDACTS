@@ -133,6 +133,42 @@ class TestSystemToolsAndHints:
         docker = next(t for t in SYSTEM_TOOLS if t["name"] == "docker")
         assert docker.get("dast_only") is True
 
+    def test_dast_only_tool_not_required_without_dynamic(self, monkeypatch):
+        """A static-only run must not treat Docker as a required dependency.
+
+        ``check_dependencies()`` defaults to ``fail_on_missing=True``; before
+        this, a missing Docker raised even for static-only workflows, which
+        contradicts "Docker is required only for dynamic (DAST) mode".
+        """
+        from static.cli.dependencies import _tool_is_required
+        from static.core import runtime_context
+
+        monkeypatch.setattr(
+            runtime_context, "get_optional_contract", lambda: None
+        )
+        docker = {"name": "docker", "required": True, "dast_only": True}
+        assert _tool_is_required(docker) is False
+
+    def test_dast_only_tool_required_when_dynamic_enabled(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from static.cli.dependencies import _tool_is_required
+        from static.core import runtime_context
+
+        contract = SimpleNamespace(dynamic=SimpleNamespace(enabled=True))
+        monkeypatch.setattr(
+            runtime_context, "get_optional_contract", lambda: contract
+        )
+        docker = {"name": "docker", "required": True, "dast_only": True}
+        assert _tool_is_required(docker) is True
+
+    def test_non_dast_tool_stays_required(self):
+        """Static scanners are unaffected by the dast_only carve-out."""
+        from static.cli.dependencies import _tool_is_required
+
+        assert _tool_is_required({"name": "trivy", "required": True}) is True
+        assert _tool_is_required({"name": "x", "required": False}) is False
+
     def test_fix_hint_for_tool_os_aware(self, monkeypatch):
         import sys
         from static.cli.dependencies import fix_hint_for_tool

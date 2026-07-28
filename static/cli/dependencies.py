@@ -312,6 +312,33 @@ def _check_python_package(
         )
 
 
+def _tool_is_required(tool: dict) -> bool:
+    """Effective requiredness for *tool*, accounting for DAST-only tools.
+
+    A tool marked ``dast_only`` (currently Docker) is only genuinely required
+    when the case enables dynamic analysis. Without this, a static-only
+    workflow calling ``check_dependencies()`` with the default
+    ``fail_on_missing=True`` would raise for a tool the scan never invokes -
+    contradicting the documented "Docker is required only for dynamic (DAST)
+    mode" behaviour that preflight already implements via
+    ``run_preflight(dynamic_enabled=...)``.
+    """
+    if not tool.get("required"):
+        return False
+    if not tool.get("dast_only"):
+        return True
+
+    try:
+        from ..core import runtime_context
+
+        contract = runtime_context.get_optional_contract()
+        # No contract installed -> assume static-only, the safer default for a
+        # bare `check_dependencies()` call.
+        return bool(contract is not None and contract.dynamic.enabled)
+    except Exception:  # pragma: no cover - defensive; partial/absent contract
+        return False
+
+
 def _check_system_tool(tool: dict) -> DependencyStatus:
     """Check whether a system tool binary is available on PATH or in _TOOLS_DIR.
 
@@ -325,6 +352,7 @@ def _check_system_tool(tool: dict) -> DependencyStatus:
     path = _resolve_venv_tool(binary)
     target = path or binary
 
+    required = _tool_is_required(tool)
     hint = fix_hint_for_tool(tool)
 
     if path:
@@ -343,7 +371,7 @@ def _check_system_tool(tool: dict) -> DependencyStatus:
         return DependencyStatus(
             name=tool["name"],
             available=True,
-            required=tool["required"],
+            required=required,
             version=version,
             description=tool["description"],
             category="system",
@@ -354,7 +382,7 @@ def _check_system_tool(tool: dict) -> DependencyStatus:
     return DependencyStatus(
         name=tool["name"],
         available=False,
-        required=tool["required"],
+        required=required,
         error=f"'{binary}' not found in PATH. Fix: {hint}",
         description=tool["description"],
         category="system",

@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
+
 import pytest
 
 from main import build_parser, _install_contract
+from static.cli.error_recovery import ErrorRecoveryBlock, format_exception_recovery
+from static.core.contract import CaseConfigError
 
 
 def _no_override_args():
     """A namespace with no override flags set."""
     return build_parser().parse_args(["scan"])
-from static.cli.error_recovery import ErrorRecoveryBlock, format_exception_recovery
-from static.core.contract import CaseConfigError
 
 
 def test_main_help_contains_grouped_options() -> None:

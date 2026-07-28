@@ -144,12 +144,12 @@ _TOOL_REMEDIES: tuple[tuple[str, str, str, list[str], str], ...] = (
     (
         "repomix",
         "Repomix",
-        "Repomix codebase packager is missing or not available on PATH.",
+        "The Repomix Python package is not installed in this environment.",
         [
-            "Install Repomix globally via npm: npm install -g repomix",
-            "Or install Node.js from https://nodejs.org or winget install OpenJS.NodeJS",
+            "Install it with: pip install repomix",
+            "Or reinstall all REDACTS dependencies: pip install -r requirements.txt",
         ],
-        "npm install -g repomix",
+        "pip install repomix",
     ),
 )
 
@@ -219,12 +219,15 @@ def format_error_recovery(error: Union[Exception, str, int]) -> ErrorRecoveryBlo
                 f"run, so strict reproducibility cannot be guaranteed: {error}"
             ),
             how_to_fix=[
+                # Explicit ``+`` rather than adjacent literals: in a list of
+                # user-facing bullets, a dropped comma would silently merge two
+                # items into one garbled instruction with no error.
                 "Diff case.toml against the sealed values in case.toml.lock and revert "
-                "the unintended change.",
+                + "the unintended change.",
                 "If a CLI flag (--target/--reference/--severity-gate/--timeout) caused "
-                "this, drop the flag: a sealed case runs only as sealed.",
+                + "this, drop the flag: a sealed case runs only as sealed.",
                 "To start a genuinely new scan, delete case.toml.lock and the run "
-                "directory, then re-run.",
+                + "directory, then re-run.",
             ],
             recommended_command="python main.py scan",
             exit_code=2,
@@ -255,7 +258,7 @@ def format_error_recovery(error: Union[Exception, str, int]) -> ErrorRecoveryBlo
             how_to_fix=[
                 "Install the tool as a native executable rather than a .cmd/.bat shim.",
                 "Move the target or reference to a path without shell metacharacters "
-                "(& | < > ^ ( ) \" % !).",
+                + "(& | < > ^ ( ) \" % !).",
                 "See SETUP.md for step-by-step instructions to install required dependencies.",
             ],
             recommended_command="python main.py preflight",

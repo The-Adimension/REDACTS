@@ -135,7 +135,8 @@ def test_all_none_sources_do_not_trip() -> None:
 @pytest.mark.parametrize("gate", ["info", "low", "medium", "high", "critical"])
 def test_gate_level_controls_sensitivity(gate: str) -> None:
     """A single HIGH finding trips iff the gate is at or below HIGH."""
-    triggered, _ = evaluate_severity_gate("high" if False else gate,
-                                          orchestrator_findings=[_tool("HIGH")])
+    triggered, _ = evaluate_severity_gate(
+        gate, orchestrator_findings=[_tool("HIGH")]
+    )
     expected = SeverityLevel.from_string(gate).numeric_rank <= SeverityLevel.HIGH.numeric_rank
     assert triggered is expected

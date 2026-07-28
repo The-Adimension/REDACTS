@@ -11,10 +11,6 @@ import argparse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from rich.console import Console
 
 
 class MissingInputError(Exception):
@@ -375,10 +371,12 @@ def run_init_wizard(args: argparse.Namespace | None = None) -> int:
                 "file would be recorded in the contract as if it were the evidence."
             ),
             how_to_fix=[
+                # Explicit ``+``: adjacent literals in a bullet list are one
+                # dropped comma away from silently merging two instructions.
                 "Stage the target and reference artifacts (archive or extracted "
-                "directory) on disk first.",
+                + "directory) on disk first.",
                 "Re-run with explicit paths: python main.py init --target <PATH> "
-                "--reference <PATH>",
+                + "--reference <PATH>",
             ],
             recommended_command="python main.py init --target <PATH> --reference <PATH>",
             exit_code=2,
