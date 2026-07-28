@@ -35,6 +35,7 @@ from .dependencies import (
     fix_hint_for_python,
     fix_hint_for_tool,
 )
+from static.core.subprocess_env import resolve_and_wrap_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,11 @@ def _check_attack_data() -> PreflightCheck:
     WARN-tier: the bundled REDACTS attack vector subset (34 patterns)
     always works.  The full ATT&CK Enterprise bundle (~25MB) is optional
     and provides richer technique descriptions and mitigations.
+
+    This stays WARN deliberately.  Making it BLOCK would contradict the
+    message the failing branch prints - the scan *does* proceed on the
+    bundled subset - and would strand air-gapped operators who cannot
+    fetch the bundle at all.
     """
     try:
         from threat_base.prefetch import is_attack_data_available
@@ -301,6 +307,11 @@ def _check_network_status() -> PreflightCheck:
     WARN-tier: offline mode is supported via cached/bundled data.
     This check informs the user whether NVD, ATT&CK updates, and
     community rule downloads will work.
+
+    This must never be BLOCK.  ``[security].network_disabled = true`` is a
+    supported, deliberate operator choice, so blocking on it would make the
+    documented air-gapped workflow unrunnable - including the offline
+    remediation steps this tool prints elsewhere when network is unavailable.
     """
     try:
         from static.core import runtime_context
@@ -348,10 +359,34 @@ def _check_network_status() -> PreflightCheck:
         )
 
 
+def _dynamic_enabled_from_contract() -> bool:
+    """Return whether the installed contract enables dynamic (DAST) analysis.
+
+    Defaults to ``False`` when no contract is installed, so a bare
+    ``preflight`` run (or any static-only context) does not demand DAST-only
+    tools. DAST is gated by ``[dynamic].enabled`` in ``case.toml``.
+    """
+    try:
+        from static.core import runtime_context
+
+        contract = runtime_context.get_optional_contract()
+        if contract is None:
+            return False
+        return bool(contract.dynamic.enabled)
+    except Exception:  # pragma: no cover - defensive; missing/partial contract
+        return False
+
+
 def _check_external_tool(tool: dict, tier: str = "WARN") -> PreflightCheck:
-    """Layer 4: Probe an external binary."""
+    """Layer 4: Probe an external binary at the caller's tier.
+
+    The tier comes from the tool's ``required`` flag in ``SYSTEM_TOOLS``, not
+    from this function - see the two loops in :func:`run_preflight`.
+    """
+    from static.scanners.external import _resolve_venv_tool
+
     binary = tool["binary"]
-    path = shutil.which(binary)
+    path = _resolve_venv_tool(binary) or shutil.which(binary)
     hint = fix_hint_for_tool(tool)
 
     if not path:
@@ -364,18 +399,46 @@ def _check_external_tool(tool: dict, tier: str = "WARN") -> PreflightCheck:
             fix_hint=hint,
         )
 
-    # Try to get version
+    # Functional probe: a binary that exists but cannot even report its
+    # version is present-but-broken. Reporting it PASS masks a silent failure
+    # (e.g. Semgrep installs on Python 3.14 but its engine does not run - it
+    # exits non-zero with no output, yet the scan would still report
+    # "semgrep OK, 0 findings"). Treat a non-zero exit or a failed probe as a
+    # functional failure so the operator is not misled into trusting coverage
+    # that never ran.
     version = ""
+    functional = True
+    detail = ""
     try:
         proc = subprocess.run(
-            [binary, "--version"],
+            resolve_and_wrap_cmd([path, "--version"]),
             capture_output=True,
             text=True,
             timeout=10,
         )
         version = (proc.stdout or proc.stderr).strip().split("\n")[0][:80]
-    except Exception:
-        version = "found (version unknown)"
+        if proc.returncode != 0:
+            functional = False
+            detail = f"'{binary} --version' exited {proc.returncode}"
+    except Exception as exc:
+        functional = False
+        detail = f"'{binary} --version' failed: {exc}"
+
+    if not functional:
+        return PreflightCheck(
+            layer=4,
+            name=tool["name"],
+            passed=False,
+            tier=tier,
+            message=(
+                f"'{binary}' is installed but not functional ({detail}) - "
+                f"{tool['description']} will not run. Reinstall it, or use a "
+                f"Python/runtime it supports (e.g. Semgrep's engine is tested "
+                f"through Python 3.13 and does not run on 3.14)."
+            ),
+            fix_hint=hint,
+            version=version,
+        )
 
     return PreflightCheck(
         layer=4,
@@ -391,6 +454,7 @@ def run_preflight(
     check_knowledge: bool = True,
     check_external: bool = True,
     phase: str = "check",
+    dynamic_enabled: bool | None = None,
 ) -> PreflightResult:
     """Execute the full 5-layer preflight verification.
 
@@ -411,6 +475,13 @@ def run_preflight(
     phase : str
         Recorded on each check so the post-install recheck can be
         distinguished from the initial gate.
+    dynamic_enabled : bool | None
+        Whether the run will perform dynamic (DAST) analysis. DAST-only
+        tools (e.g. Docker) are a BLOCK failure only when this is *True*;
+        for a static-only run they degrade to WARN, since the scan never
+        invokes them. When *None* it is derived from the installed
+        contract's ``[dynamic].enabled`` (defaulting to *False* if no
+        contract is installed).
 
     Returns
     -------
@@ -446,11 +517,22 @@ def run_preflight(
         logger.info("Preflight Layer 3c: ATT&CK Enterprise data")
         _add(_check_attack_data())
 
-    # Layer 4: External tools (BLOCK-tier required + WARN-tier optional)
+    # Resolve whether dynamic (DAST) analysis is in scope. DAST-only tools
+    # (e.g. Docker) are a hard BLOCK only then; a static-only run degrades them
+    # to WARN so the analyst is not blocked for a tool the scan never calls.
+    if dynamic_enabled is None:
+        dynamic_enabled = _dynamic_enabled_from_contract()
+
+    # Layer 4: External tools (BLOCK-tier required + WARN-tier optional).
+    # The tier tracks each tool's ``required`` flag in SYSTEM_TOOLS; checking
+    # the WARN list at BLOCK would make "optional" mean nothing.
     if check_external:
         logger.info("Preflight Layer 4: External tool availability")
         for tool in _BLOCK_EXTERNAL_TOOLS:
-            _add(_check_external_tool(tool, tier="BLOCK"))
+            tier = "BLOCK"
+            if tool.get("dast_only") and not dynamic_enabled:
+                tier = "WARN"
+            _add(_check_external_tool(tool, tier=tier))
         for tool in _WARN_EXTERNAL_TOOLS:
             _add(_check_external_tool(tool, tier="WARN"))
 
@@ -537,7 +619,7 @@ def main(argv: list[str] | None = None) -> None:
     if result.blocked:
         print("\nPreflight FAILED - cannot proceed. Fix the BLOCK issues above.")
         if not args.install:
-            print("Tip: re-run with '--install' to auto-install missing items.")
+            print("Tip: see SETUP.md for step-by-step instructions to install all required dependencies.")
         sys.exit(1)
     elif result.warn_failures:
         print(f"\nPreflight passed with {len(result.warn_failures)} warning(s).")
@@ -647,31 +729,27 @@ def step_preflight(console):  # noqa: ANN001 - Console import is optional
     _display_preflight_table(console, result)
 
     if result.blocked:
-        result = auto_install_missing(result, console=console)
-        _display_preflight_table(console, result)
-
-        if result.blocked:
+        cli_print(
+            console,
+            "\n  x PREFLIGHT FAILED - BLOCK-tier dependencies missing:",
+            style="bold red",
+        )
+        for fail in result.block_failures:
             cli_print(
                 console,
-                "\n  x PREFLIGHT FAILED - BLOCK-tier dependencies still missing:",
-                style="bold red",
+                f"    x {fail.name}: {fail.message}"
+                + (f"  [fix: {fail.fix_hint}]" if fail.fix_hint else ""),
+                style="red",
             )
-            for fail in result.block_failures:
-                cli_print(
-                    console,
-                    f"    x {fail.name}: {fail.message}"
-                    + (f"  [fix: {fail.fix_hint}]" if fail.fix_hint else ""),
-                    style="red",
-                )
-            cli_print(
-                console,
-                "\n  Install the above and re-run REDACTS.",
-                style="bold red",
-            )
-            dep_report = check_dependencies(
-                include_optional_tools=True, fail_on_missing=False
-            )
-            return False, result.coverage_notes, dep_report
+        cli_print(
+            console,
+            "\n  See SETUP.md for step-by-step instructions to install required dependencies, then re-run REDACTS.",
+            style="bold red",
+        )
+        dep_report = check_dependencies(
+            include_optional_tools=True, fail_on_missing=False
+        )
+        return False, result.coverage_notes, dep_report
 
     if result.coverage_notes:
         cli_print(console, "")

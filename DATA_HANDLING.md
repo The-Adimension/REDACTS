@@ -32,7 +32,7 @@ Reports and artefacts are written under the storage roots declared in
 | `output_root` | Per-run report directory (`scan_<timestamp>/`). JSON, Markdown, HTML, and SARIF v2.1.0 outputs. |
 | `temp_root` | Extraction sandbox for archives and DAST runtime state. |
 | `cache_root` | Threat-base downloads, image manifests. |
-| `tools_root` | Auto-installed Trivy / YARA binaries (only when the analyst opts in). |
+| `tools_root` | Optional location for scanner binaries (e.g. Trivy / YARA) dropped here manually; it is auto-prepended to `PATH`. Trivy and YARA are normally installed via your OS package manager (see SETUP.md). |
 | `logs_root` | Run logs at the level set in `[logging]`. |
 | `audit_trail` | Append-only NDJSON of phase boundaries and tool invocations. |
 

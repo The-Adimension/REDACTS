@@ -57,7 +57,7 @@ def _runtime_allowlist() -> frozenset[str] | None:
     except Exception:  # pragma: no cover - runtime_context always exists in production
         return None
     contract = runtime_context.get_optional_contract()
-    if contract is None:
+    if contract is None or not hasattr(contract, "security"):
         return None
     return frozenset(contract.security.ssrf_allowlist)
 
@@ -71,7 +71,7 @@ def _runtime_network_disabled() -> bool:
     except Exception:  # pragma: no cover
         return False
     contract = runtime_context.get_optional_contract()
-    if contract is None:
+    if contract is None or not hasattr(contract, "security"):
         return False
     return bool(contract.security.network_disabled)
 

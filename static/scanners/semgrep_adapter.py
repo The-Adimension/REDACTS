@@ -35,12 +35,11 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 import time
 from pathlib import Path
 from typing import Any
 
-from .external import ExternalToolAdapter, ExternalToolResult
+from .external import ExternalToolAdapter, ExternalToolResult, _resolve_venv_tool
 from ..core.findings import (
     Confidence,
     CvssVector,
@@ -111,68 +110,20 @@ class SemgrepAdapter(ExternalToolAdapter):
     def _resolve_invocation(self) -> list[str] | None:
         """Return the prefix command that invokes Semgrep, or ``None``.
 
-        Detection order:
+        Delegates to the single canonical resolver
+        :func:`static.scanners.external._resolve_venv_tool`, which checks
+        ``PATH``, the interpreter and per-user console-script directories
+        (where ``pip install --user`` deposits ``semgrep.exe``), and the
+        managed tools directory. Using the one resolver keeps preflight and
+        the scan in agreement about whether Semgrep is available.
 
-        1. ``semgrep`` on PATH (``shutil.which``).
-        2. The ``semgrep[.exe]`` console script in the active Python
-           interpreter's *Scripts* / *bin* directory. ``pip install
-           semgrep`` deposits the entry-point there, but on Windows
-           that directory is often missing from PATH for venvs created
-           outside the project, so PATH detection alone returns
-           ``None`` even though Semgrep is installed.
-
-        We deliberately do **not** fall back to
-        ``python -m semgrep``: Semgrep ``>=1.38.0`` rejects that
-        invocation with an exit-2 deprecation error, so an
-        "importable but binary-less" install is *not* a runnable
-        install and must surface as unavailable so the operator can
-        fix it.
+        We deliberately do **not** fall back to ``python -m semgrep``:
+        Semgrep ``>=1.38.0`` rejects that invocation with an exit-2
+        deprecation error, so an "importable but binary-less" install is
+        *not* a runnable install and must surface as unavailable.
         """
-        cli = shutil.which("semgrep")
-        if cli:
-            return [cli]
-        # Probe the active interpreter's Scripts/bin dir for the
-        # console script ``pip`` installs. ``sysconfig.get_path``
-        # is stdlib and reflects the real location for venvs,
-        # user-site, and pipx alike. We probe both the system scheme
-        # and the platform's *user* scheme because ``pip install
-        # --user`` deposits scripts under USER_BASE while the default
-        # scheme reports the *system* Scripts dir for the same
-        # interpreter.
-        import sys as _sys
-        import sysconfig as _sysconfig
-        is_win = _sys.platform == "win32"
-        bin_name = "Scripts" if is_win else "bin"
-        user_scheme = "nt_user" if is_win else (
-            "osx_framework_user" if _sys.platform == "darwin"
-            and "osx_framework_user" in _sysconfig.get_scheme_names()
-            else "posix_user"
-        )
-        candidates: list[Path] = []
-        for getter in (
-            lambda: _sysconfig.get_path("scripts"),
-            lambda: _sysconfig.get_path("scripts", scheme=user_scheme),
-        ):
-            try:
-                d = getter()
-            except (KeyError, ValueError):  # pragma: no cover - defensive
-                continue
-            if d:
-                candidates.append(Path(d))
-        # Belt-and-braces for venvs where get_path differs from the
-        # interpreter's actual Scripts dir.
-        candidates.append(Path(_sys.prefix) / bin_name)
-        exe_names = ("semgrep.exe", "semgrep") if is_win else ("semgrep",)
-        seen: set[Path] = set()
-        for d in candidates:
-            if d in seen:
-                continue
-            seen.add(d)
-            for name in exe_names:
-                p = d / name
-                if p.is_file():
-                    return [str(p)]
-        return None
+        path = _resolve_venv_tool("semgrep")
+        return [path] if path else None
 
     def is_available(self) -> bool:
         return self._resolve_invocation() is not None
@@ -292,11 +243,27 @@ class SemgrepAdapter(ExternalToolAdapter):
             except json.JSONDecodeError as exc:
                 errors.append(f"Failed to parse Semgrep SARIF output: {exc}")
 
+        # A functional Semgrep with ``--sarif`` ALWAYS emits a SARIF document,
+        # even with zero findings. Empty output on an otherwise "clean" exit
+        # means the engine never ran (the silent-no-op failure mode on
+        # unsupported runtimes such as Python 3.14). Do not report that as
+        # success - it would masquerade as "scanned, found nothing" and give
+        # false assurance of PHP coverage that never happened.
+        produced_sarif = bool(sarif_data)
+        succeeded = rc in (0, 1) and produced_sarif
+        if rc in (0, 1) and not produced_sarif:
+            errors.append(
+                "Semgrep exited cleanly but produced no SARIF output - its "
+                "engine did not run, so NO PHP coverage was obtained. This is "
+                "the known failure mode on Python 3.14; use a Python version "
+                "Semgrep supports (tested through 3.13)."
+            )
+
         return ExternalToolResult(
             tool_name=self.name,
             tool_version=version,
             available=True,
-            success=rc in (0, 1),  # 0 = no findings, 1 = findings found
+            success=succeeded,
             execution_time_seconds=elapsed,
             raw_output=out[:50000] if out else "",  # Cap raw output
             parsed_data={

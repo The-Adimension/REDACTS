@@ -20,6 +20,7 @@ from urllib.parse import urljoin
 
 from .dependencies import DependencyReport
 from ..core.paths import tools_dir as _resolve_tools_dir, inject_tools_on_path
+from ..core.subprocess_env import resolve_and_wrap_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def auto_install_python(report: DependencyReport) -> list[str]:
 
         try:
             proc = subprocess.run(
-                [sys.executable, "-m", "pip", "install", pip_spec, "--quiet"],
+                resolve_and_wrap_cmd([sys.executable, "-m", "pip", "install", pip_spec, "--quiet"]),
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -101,7 +102,7 @@ def _post_install_hooks(installed: list[str]) -> None:
         print("  Installing Playwright Chromium browser...")
         try:
             proc = subprocess.run(
-                [sys.executable, "-m", "playwright", "install", "chromium"],
+                resolve_and_wrap_cmd([sys.executable, "-m", "playwright", "install", "chromium"]),
                 capture_output=True,
                 text=True,
                 timeout=300,
@@ -444,7 +445,7 @@ def _install_yara(dest_dir: Path) -> bool:
         # macOS - try Homebrew first, then binary download
         try:
             proc = subprocess.run(
-                ["brew", "install", "yara"],
+                resolve_and_wrap_cmd(["brew", "install", "yara"]),
                 capture_output=True, text=True, timeout=180,
             )
             if proc.returncode == 0:
@@ -464,7 +465,7 @@ def _install_yara(dest_dir: Path) -> bool:
             if shutil.which(pkg_mgr):
                 try:
                     proc = subprocess.run(
-                        args, capture_output=True, text=True, timeout=180,
+                        resolve_and_wrap_cmd(args), capture_output=True, text=True, timeout=180,
                     )
                     if proc.returncode == 0:
                         print(f"    Installed YARA via {pkg_mgr}")

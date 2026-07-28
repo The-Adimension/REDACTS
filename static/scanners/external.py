@@ -41,11 +41,61 @@ logger = logging.getLogger(__name__)
 # Canonical tool-cache path: always resolved fresh against the active
 # FrozenCaseContract via static.core.paths (no import-time capture).
 from ..core.paths import tools_dir as _resolve_tools_dir, inject_tools_on_path
+from ..core.subprocess_env import UnsafeCommandError, resolve_and_wrap_cmd
+
+
+def _interpreter_script_dirs() -> list[Path]:
+    """Return every directory pip may deposit a console script into.
+
+    Console scripts (``semgrep.exe``, ``lizard.exe`` ...) are **not** placed
+    beside ``python.exe`` - they go in a ``Scripts`` (Windows) / ``bin``
+    (POSIX) directory whose location depends on the install scheme:
+
+    * default / venv install -> the interpreter's own scripts dir
+      (``sysconfig.get_path("scripts")``);
+    * ``pip install --user`` -> the *user* scheme scripts dir
+      (e.g. ``%APPDATA%\\Python\\Python3xx\\Scripts``), which is a different
+      directory and is frequently absent from ``PATH``.
+
+    Probing both mirrors what the Semgrep adapter already does, so preflight
+    resolution is consistent with actual tool availability.
+    """
+    import sysconfig
+
+    candidates: list[Path] = []
+
+    # The interpreter directory and its adjacent Scripts/bin subdir. In a venv
+    # python lives inside Scripts/bin already, so the parent itself is valid.
+    exe_parent = Path(sys.executable).resolve().parent
+    candidates += [exe_parent, exe_parent / "Scripts", exe_parent / "bin"]
+
+    # sysconfig's own scripts dir, plus the per-user scheme.
+    user_scheme = "nt_user" if os.name == "nt" else "posix_user"
+    for scheme in (None, user_scheme):
+        try:
+            path = (
+                sysconfig.get_path("scripts")
+                if scheme is None
+                else sysconfig.get_path("scripts", scheme=scheme)
+            )
+        except (KeyError, OSError):
+            continue
+        if path:
+            candidates.append(Path(path))
+
+    seen: set[str] = set()
+    ordered: list[Path] = []
+    for directory in candidates:
+        key = str(directory)
+        if key not in seen:
+            seen.add(key)
+            ordered.append(directory)
+    return ordered
 
 
 def _resolve_venv_tool(name: str) -> str | None:
-    """Resolve a tool binary, checking PATH, venv Scripts, and the
-    managed tools directory.
+    """Resolve a tool binary, checking PATH, interpreter/user Scripts dirs,
+    and the managed tools directory.
 
     When REDACTS is invoked via its full interpreter path (e.g.
     ``/path/to/.venv/Scripts/python -m REDACTS``) the venv ``Scripts``
@@ -54,8 +104,11 @@ def _resolve_venv_tool(name: str) -> str | None:
 
     Strategy:
         1. ``shutil.which(name)`` - honours ``$PATH`` as usual.
-        2. Probe ``sys.executable``'s sibling directory for common
-           suffixed variants (plain name, ``.exe``, ``.cmd``).
+        2. Probe every interpreter/user console-script directory (see
+           :func:`_interpreter_script_dirs`) for common suffixed variants
+           (plain name, ``.exe``, ``.cmd``, ``.bat``). ``.ps1`` is excluded:
+           running one needs an execution-policy bypass that
+           ``subprocess_env`` refuses to issue.
         3. Probe :func:`static.core.paths.tools_dir` - the auto-install
            directory used by ``core.dependencies`` for Trivy, YARA, etc.
            When found here, ``PATH`` is updated via the canonical
@@ -66,21 +119,32 @@ def _resolve_venv_tool(name: str) -> str | None:
     if found:
         return found
 
-    # Check venv Scripts/bin directory
-    scripts_dir = Path(sys.executable).resolve().parent
-    for suffix in ("", ".exe", ".cmd"):
-        candidate = scripts_dir / f"{name}{suffix}"
-        if candidate.is_file():
-            return str(candidate)
+    # Check interpreter and per-user console-script directories.
+    for scripts_dir in _interpreter_script_dirs():
+        for suffix in ("", ".exe", ".cmd", ".bat"):
+            candidate = scripts_dir / f"{name}{suffix}"
+            if candidate.is_file():
+                return str(candidate)
 
     # Check the managed REDACTS tools directory.
     tools_dir = _resolve_tools_dir()
-    for suffix in ("", ".exe"):
+    for suffix in ("", ".exe", ".cmd", ".bat"):
         candidate = tools_dir / f"{name}{suffix}"
         if candidate.is_file():
             # Ensure tools_dir is on PATH for downstream subprocess calls.
             inject_tools_on_path()
             return str(candidate)
+
+    # Also check ~/.redacts/tools fallback if contract tools_dir differs
+    from ..core.paths import _DEFAULT_HOME
+    default_tools = _DEFAULT_HOME / "tools"
+    if default_tools != tools_dir:
+        for suffix in ("", ".exe", ".cmd", ".bat"):
+            candidate = default_tools / f"{name}{suffix}"
+            if candidate.is_file():
+                if str(default_tools) not in os.environ.get("PATH", "").split(os.pathsep):
+                    os.environ["PATH"] = str(default_tools) + os.pathsep + os.environ.get("PATH", "")
+                return str(candidate)
 
     return None
 
@@ -173,7 +237,7 @@ class ExternalToolAdapter(ABC):
         """Run *cmd* and return ``(stdout, stderr, returncode)``."""
         try:
             proc = subprocess.run(
-                cmd,
+                resolve_and_wrap_cmd(cmd),
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -184,6 +248,11 @@ class ExternalToolAdapter(ABC):
             return "", f"Command not found: {cmd[0]}", -1
         except subprocess.TimeoutExpired:
             return "", f"Command timed out after {timeout}s", -2
+        except UnsafeCommandError as exc:
+            # Refusing to launch is the safe outcome; surface it as a failed
+            # tool run so the scan degrades instead of aborting.
+            logger.error("Refused unsafe subprocess invocation: %s", exc)
+            return "", str(exc), -3
 
     @staticmethod
     def _collect_files(

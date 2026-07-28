@@ -57,6 +57,13 @@ from threat_base.session import KnowledgeSession
 
 logger = logging.getLogger(__name__)
 
+# Severity levels in report display order (most severe first).
+_SEVERITY_ORDER: tuple[str, ...] = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+
+# Baseline findings tables are capped so a noisy diff cannot produce a
+# multi-thousand-row report; the full set stays in the JSON output.
+_BASELINE_TABLE_ROW_CAP: int = 50
+
 
 @dataclass
 class AuditResult:
@@ -394,6 +401,33 @@ class AuditPipeline:
             "Wrote %d audit report(s) to %s", len(result.report_files), reports_dir
         )
 
+    # --- Shared rendering helpers ----------
+
+    @staticmethod
+    def _group_findings_by_severity(
+        findings: list[dict[str, Any]],
+    ) -> list[tuple[str, list[dict[str, Any]]]]:
+        """Bucket *findings* into ordered severity groups.
+
+        Returns ``[(label, group), ...]`` in CRITICAL->INFO order, omitting
+        empty groups, with a trailing ``("OTHER", [...])`` for any finding
+        whose severity is not a known level. Both the Markdown and HTML
+        renderers iterate this, so the ``OTHER`` bucket is simply the last
+        entry rather than a separately duplicated code path.
+        """
+        grouped: dict[str, list[dict[str, Any]]] = {
+            sev: [] for sev in _SEVERITY_ORDER
+        }
+        other: list[dict[str, Any]] = []
+        for f in findings:
+            sev = str(f.get("severity", "")).upper()
+            (grouped[sev] if sev in grouped else other).append(f)
+
+        ordered = [(sev, grouped[sev]) for sev in _SEVERITY_ORDER if grouped[sev]]
+        if other:
+            ordered.append(("OTHER", other))
+        return ordered
+
     # --- Markdown report ----------
 
     def _render_markdown(self, result: AuditResult) -> str:
@@ -405,6 +439,18 @@ class AuditPipeline:
         a(f"**Generated**: {result.timestamp}")
         a(f"**Duration**: {result.duration_seconds:.1f}s")
         a(f"**Risk Level**: **{result.overall_risk_level}**")
+        a("")
+        a("> **What this report is.** The *Audit report* compares the target "
+          "against the known-good reference archive and then deep-analyses only "
+          "the files that differ (the *delta*). Use it to answer: *what changed "
+          "from the official REDCap release, and what do those changes contain?* "
+          "Findings here are curated forensic indicators.")
+        a(">")
+        a("> **Companion outputs.** `redacts_forensic_*` - the chain-of-custody "
+          "forensic deliverable (same findings, plus evidence provenance); "
+          "`redacts_sarif_*.json` - machine-readable raw scanner output for "
+          "CI/IDE ingestion. See the Forensic report for the primary "
+          "human-facing summary.")
         a("")
         a("## Executive Summary")
         a("")
@@ -428,15 +474,23 @@ class AuditPipeline:
         # Baseline findings detail
         bd = result.baseline_diff or {}
         if bd.get("findings"):
+            findings = bd["findings"]
+            total = len(findings)
+            display_findings = findings[:_BASELINE_TABLE_ROW_CAP]
             a("### Baseline Findings")
             a("")
             a("| Severity | Type | Path | Message |")
             a("|----------|------|------|---------|")
-            for f in bd["findings"]:
+            for f in display_findings:
                 a(
                     f"| {f['severity']} | {f['type']} | `{f['path']}` | {f['message'][:80]} |"
                 )
             a("")
+            if total > _BASELINE_TABLE_ROW_CAP:
+                a(
+                    f"*Baseline table capped at {_BASELINE_TABLE_ROW_CAP} rows (out of {total} total findings). Refer to the full JSON report for complete baseline findings.*"
+                )
+                a("")
 
         # Delta deep scan
         inv = result.investigation or {}
@@ -458,11 +512,18 @@ class AuditPipeline:
 
             a("### Findings Detail")
             a("")
-            for f in inv["findings"]:
-                sev = f.get("severity", "")
-                a(f"- **[{sev}]** {f.get('title', '')}  ")
-                a(f"  File: `{f.get('file_path', '')}:{f.get('line', 0)}`  ")
-                a(f"  {f.get('description', '')[:200]}")
+
+            for label, group in self._group_findings_by_severity(inv["findings"]):
+                a("<details>")
+                a(f"<summary><strong>{label}</strong> ({len(group)} findings)</summary>")
+                a("")
+                for f in group:
+                    s_label = f.get("severity", label)
+                    a(f"- **[{s_label}]** {f.get('title', '')}  ")
+                    a(f"  File: `{f.get('file_path', '')}:{f.get('line', 0)}`  ")
+                    a(f"  {f.get('description', '')[:200]}")
+                    a("")
+                a("</details>")
                 a("")
         elif result.delta_count == 0 and result.overall_risk_level == "CLEAN":
             a("## Deep Analysis")
@@ -488,31 +549,187 @@ class AuditPipeline:
 
     def _render_html(self, result: AuditResult) -> str:
         import html as html_mod
+        from ..report.renderers import _severity_badge_html
 
-        md = self._render_markdown(result)
+        def esc(val: Any) -> str:
+            return html_mod.escape(str(val)) if val is not None else ""
 
-        # Quick-and-dirty HTML wrapper around the markdown content
-        escaped = html_mod.escape(md)
-        # Convert markdown tables to simple pre-formatted text
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<title>REDACTS Audit - REDCap {html_mod.escape(result.version or "unknown")}</title>
-<style>
-  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-         max-width: 960px; margin: 2em auto; padding: 0 1em; color: #222; }}
-  h1 {{ border-bottom: 3px solid #0057b7; padding-bottom: .3em; }}
-  h2 {{ border-bottom: 1px solid #ddd; padding-bottom: .2em; margin-top: 1.5em; }}
-  pre {{ background: #f6f8fa; padding: 1em; border-radius: 6px; overflow-x: auto; }}
-  .risk-clean {{ color: #28a745; }} .risk-critical {{ color: #d73a49; }}
-  .risk-high {{ color: #e36209; }} .risk-medium {{ color: #dbab09; }}
-  table {{ border-collapse: collapse; width: 100%; margin: 1em 0; }}
-  th, td {{ border: 1px solid #ddd; padding: 6px 12px; text-align: left; }}
-  th {{ background: #f6f8fa; }}
-</style>
-</head>
-<body>
-<pre>{escaped}</pre>
-</body>
-</html>"""
+        lines: list[str] = []
+        p = lines.append
+
+        title = f"REDACTS Audit Report - REDCap {result.version or '(unknown)'}"
+
+        p("<!DOCTYPE html>")
+        p('<html lang="en">')
+        p("<head>")
+        p('<meta charset="utf-8"/>')
+        p(f"<title>{esc(title)}</title>")
+        p("<style>")
+        p(":root {")
+        p("    --bg: #0d1117;")
+        p("    --surface: #161b22;")
+        p("    --border: #30363d;")
+        p("    --text: #c9d1d9;")
+        p("    --text-muted: #8b949e;")
+        p("    --accent: #58a6ff;")
+        p("    --green: #3fb950;")
+        p("    --red: #f85149;")
+        p("    --yellow: #d29922;")
+        p("}")
+        p("* { margin: 0; padding: 0; box-sizing: border-box; }")
+        p("body {")
+        p("    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;")
+        p("    background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem;")
+        p("    max-width: 1200px; margin: 0 auto;")
+        p("}")
+        p("h1 { color: var(--accent); border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem; }")
+        p("h2 { color: var(--green); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin: 1.5rem 0 0.8rem; }")
+        p("h3 { color: var(--yellow); margin: 1rem 0 0.5rem; }")
+        p("p { margin: 0.5rem 0; }")
+        p("table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; background: var(--surface); border-radius: 6px; overflow: hidden; }")
+        p("th, td { padding: 0.5rem 0.8rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9em; }")
+        p("th { background: #21262d; color: var(--accent); font-weight: 600; }")
+        p("tr:hover td { background: #1c2128; }")
+        p("code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.9em; }")
+        p("details { margin: 0.8rem 0; border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 1rem; background: var(--surface); }")
+        p("summary { cursor: pointer; font-weight: 600; padding: 0.4rem 0; color: #e6edf3; display: flex; align-items: center; gap: 8px; }")
+        p("summary:hover { color: var(--accent); }")
+        p(".badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 700; color: #fff; }")
+        p(".note { font-style: italic; color: var(--text-muted); margin-top: 0.5rem; }")
+        p(".meta { color: var(--text-muted); font-size: 0.9em; margin-bottom: 1.5rem; }")
+        p("</style>")
+        p("</head>")
+        p("<body>")
+
+        # 1. Executive Summary Header & Content
+        p(f"<h1>{esc(title)}</h1>")
+        p('<div class="meta">')
+        p(f"<strong>Generated:</strong> {esc(result.timestamp)} &nbsp;|&nbsp; ")
+        p(f"<strong>Duration:</strong> {result.duration_seconds:.1f}s")
+        p("</div>")
+
+        p(
+            '<div style="border-left:4px solid var(--accent);background:var(--surface);'
+            'padding:0.8rem 1rem;margin:1rem 0;border-radius:4px;">'
+            "<p><strong>What this report is.</strong> The <em>Audit report</em> "
+            "compares the target against the known-good reference archive, then "
+            "deep-analyses only the files that differ (the <em>delta</em>). Use it "
+            "to answer: <em>what changed from the official REDCap release, and what "
+            "do those changes contain?</em></p>"
+            "<p style=\"margin-bottom:0;\"><strong>Companion outputs.</strong> "
+            "<code>redacts_forensic_*</code> - the chain-of-custody forensic "
+            "deliverable (same findings, plus evidence provenance); "
+            "<code>redacts_sarif_*.json</code> - machine-readable raw scanner "
+            "output for CI/IDE.</p>"
+            "</div>"
+        )
+
+        p("<h2>Executive Summary</h2>")
+        risk_badge = _severity_badge_html(result.overall_risk_level)
+        p(f"<p><strong>Overall Risk Level:</strong> {risk_badge}</p>")
+        p(f"<p>{esc(result.risk_summary or 'No summary available.')}</p>")
+
+        # 2. Baseline Comparison Section
+        p("<h2>Baseline Comparison</h2>")
+        p("<table>")
+        p("<thead><tr><th>Metric</th><th>Count</th></tr></thead>")
+        p("<tbody>")
+        p(f"<tr><td>Reference files</td><td>{result.reference_file_count:,}</td></tr>")
+        p(f"<tr><td>Target files</td><td>{result.target_file_count:,}</td></tr>")
+        p(f"<tr><td>Identical (SHA-256 match)</td><td>{result.files_identical:,}</td></tr>")
+        p(f"<tr><td>Modified (hash mismatch)</td><td>{result.files_modified:,}</td></tr>")
+        p(f"<tr><td>Added (not in reference)</td><td>{result.files_added:,}</td></tr>")
+        p(f"<tr><td>Removed (missing from target)</td><td>{result.files_removed:,}</td></tr>")
+        p(f"<tr><td><strong>Delta files (deep scanned)</strong></td><td><strong>{result.delta_count}</strong></td></tr>")
+        p("</tbody>")
+        p("</table>")
+
+        bd = result.baseline_diff or {}
+        if bd.get("findings"):
+            findings = bd["findings"]
+            total = len(findings)
+            display_findings = findings[:_BASELINE_TABLE_ROW_CAP]
+            p("<h3>Baseline Findings</h3>")
+            p("<table>")
+            p("<thead><tr><th>Severity</th><th>Type</th><th>Path</th><th>Message</th></tr></thead>")
+            p("<tbody>")
+            for f in display_findings:
+                sev_b = _severity_badge_html(f.get("severity", ""))
+                p("<tr>")
+                p(f"<td>{sev_b}</td>")
+                p(f"<td>{esc(f.get('type', ''))}</td>")
+                p(f"<td><code>{esc(f.get('path', ''))}</code></td>")
+                p(f"<td>{esc(f.get('message', '')[:80])}</td>")
+                p("</tr>")
+            p("</tbody>")
+            p("</table>")
+            if total > _BASELINE_TABLE_ROW_CAP:
+                p(
+                    f'<p class="note">Baseline table capped at {_BASELINE_TABLE_ROW_CAP} rows (out of {total} total findings). Refer to the full JSON report for complete baseline findings.</p>'
+                )
+
+        # 3. Deep Analysis Findings Section
+        inv = result.investigation or {}
+        if inv.get("findings"):
+            p("<h2>Deep Analysis Findings (delta files only)</h2>")
+            p(
+                f"<p>Total: {inv.get('total_findings', 0)} findings on {result.delta_count} delta files.</p>"
+            )
+
+            by_sev = inv.get("findings_by_severity", {})
+            if by_sev:
+                p("<table>")
+                p("<thead><tr><th>Severity</th><th>Count</th></tr></thead>")
+                p("<tbody>")
+                for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"):
+                    if ct := by_sev.get(sev, 0):
+                        p(f"<tr><td>{_severity_badge_html(sev)}</td><td>{ct}</td></tr>")
+                p("</tbody>")
+                p("</table>")
+
+            p("<h3>Findings Detail</h3>")
+            for label, group in self._group_findings_by_severity(inv["findings"]):
+                sev_badge = _severity_badge_html(label)
+                p("<details>")
+                p(
+                    f"<summary><span>{sev_badge}</span> <strong>{label}</strong> ({len(group)} findings)</summary>"
+                )
+                p("<table>")
+                p(
+                    "<thead><tr><th>Severity</th><th>Title</th><th>File</th><th>Line</th><th>Description</th></tr></thead>"
+                )
+                p("<tbody>")
+                for f in group:
+                    s_badge = _severity_badge_html(f.get("severity", label))
+                    p("<tr>")
+                    p(f"<td>{s_badge}</td>")
+                    p(f"<td><strong>{esc(f.get('title', ''))}</strong></td>")
+                    p(f"<td><code>{esc(f.get('file_path', ''))}</code></td>")
+                    p(f"<td>{f.get('line', 0)}</td>")
+                    p(f"<td>{esc(f.get('description', '')[:200])}</td>")
+                    p("</tr>")
+                p("</tbody>")
+                p("</table>")
+                p("</details>")
+
+        elif result.delta_count == 0 and result.overall_risk_level == "CLEAN":
+            p("<h2>Deep Analysis</h2>")
+            p(
+                "<p>No delta files - target is byte-for-byte identical to reference. No deep analysis required.</p>"
+            )
+        else:
+            p("<h2>Deep Analysis</h2>")
+            p(
+                f"<p>Deep analysis of {result.delta_count} delta files produced zero findings.</p>"
+            )
+
+        p("<hr>")
+        from static.core.constants import VERSION as _REDACTS_VERSION
+
+        p(
+            f'<p class="note">REDACTS v{_REDACTS_VERSION} - Audit Mode - {esc(result.timestamp)}</p>'
+        )
+        p("</body>")
+        p("</html>")
+
+        return "\n".join(lines)

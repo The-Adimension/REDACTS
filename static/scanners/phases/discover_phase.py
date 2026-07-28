@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from ..phase_protocol import OrchestratorContext, PhaseResult
+from ...core.subprocess_env import resolve_and_wrap_cmd
 
 logger = logging.getLogger(__name__)
 
@@ -134,17 +135,18 @@ class DiscoverPhase:
                     "  Docker: NOT available - DAST phase will be skipped"
                 )
         else:
-            # Fallback: probe Docker ourselves
-            import shutil
+            # Fallback: probe Docker ourselves, using the same canonical
+            # resolver preflight uses so the two agree on availability.
+            from ..external import _resolve_venv_tool
 
-            docker_path = shutil.which("docker")
+            docker_path = _resolve_venv_tool("docker")
             if docker_path:
                 try:
                     import subprocess
 
                     # Get Docker version
                     dv = subprocess.run(
-                        ["docker", "--version"],
+                        resolve_and_wrap_cmd([docker_path or "docker", "--version"]),
                         capture_output=True,
                         text=True,
                         timeout=10,
@@ -155,7 +157,7 @@ class DiscoverPhase:
                         )
                     # Check Docker Compose
                     proc = subprocess.run(
-                        ["docker", "compose", "version"],
+                        resolve_and_wrap_cmd(["docker", "compose", "version"]),
                         capture_output=True,
                         text=True,
                         timeout=10,

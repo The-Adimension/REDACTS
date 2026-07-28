@@ -706,10 +706,51 @@ def detect_loader(source: str) -> BaseLoader:
     )
 
 
+import re as _re
+
+# A versioned REDCap application directory, e.g. ``redcap_v15.7.4``.
+_REDCAP_VERSIONED_DIR = _re.compile(r"^redcap_v\d+\.\d+", _re.IGNORECASE)
+
+# Markers that identify a REDCap installation.
+_REDCAP_MARKERS = ("redcap_connect.php", "database.php", "cron.php")
+
+
+def _has_redcap_markers(directory: Path) -> bool:
+    return any((directory / m).exists() for m in _REDCAP_MARKERS)
+
+
+def _refine_to_versioned_root(candidate: Path) -> Path:
+    """Descend from a marker directory to the versioned application root.
+
+    The official REDCap distribution package nests the real, versioned
+    application under ``redcap_vX.Y.Z/`` inside a thin *installer* wrapper
+    directory that **also** carries the marker files (``database.php``,
+    ``cron.php`` ...). A deployed installation, by contrast, has that versioned
+    application at its own top level. If root detection stopped at the installer
+    wrapper, the official source package and a deployed tree would share almost
+    no relative paths and every file would look added/removed.
+
+    So when *candidate* contains a versioned ``redcap_v*`` subdirectory that is
+    itself a REDCap root, prefer it. The highest version wins if several exist.
+    """
+    versioned = sorted(
+        child
+        for child in candidate.iterdir()
+        if child.is_dir()
+        and _REDCAP_VERSIONED_DIR.match(child.name)
+        and _has_redcap_markers(child)
+    )
+    return versioned[-1] if versioned else candidate
+
+
 def detect_redcap_root(path: Path) -> Path:
     """
     Detect the REDCap root directory within an extracted archive.
-    Looks for characteristic REDCap files/directories.
+
+    Looks for characteristic REDCap marker files at *path* or one level deep,
+    then refines to the versioned application root so that the official source
+    package (which wraps the app in ``redcap/redcap_vX.Y.Z/``) aligns with a
+    deployed tree (which exposes that same application at its top level).
 
     Args:
         path: Directory to search
@@ -717,22 +758,14 @@ def detect_redcap_root(path: Path) -> Path:
     Returns:
         Path to the REDCap root
     """
-    # Markers that identify a REDCap installation
-    markers = [
-        "redcap_connect.php",
-        "database.php",
-        "cron.php",
-    ]
+    # Check if path itself is the root.
+    if _has_redcap_markers(path):
+        return _refine_to_versioned_root(path)
 
-    # Check if path itself is the root
-    if any((path / m).exists() for m in markers):
-        return path
-
-    # Check one level deep
+    # Check one level deep.
     for child in path.iterdir():
-        if child.is_dir():
-            if any((child / m).exists() for m in markers):
-                return child
+        if child.is_dir() and _has_redcap_markers(child):
+            return _refine_to_versioned_root(child)
 
     # No REDCap markers found - return the path as-is and let the caller handle it
     return path

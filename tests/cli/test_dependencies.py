@@ -105,3 +105,89 @@ class TestCheckDependencies:
         names = [c.name for c in report.checks]
         for pkg in ("chardet", "magika", "paramiko", "requests"):
             assert pkg in names, f"{pkg} missing from dependency report"
+
+
+class TestSystemToolsAndHints:
+    def test_system_tools_includes_required_binaries(self):
+        from static.cli.dependencies import SYSTEM_TOOLS
+        names = {t["name"] for t in SYSTEM_TOOLS}
+        for tool in ("semgrep", "trivy", "yara"):
+            assert tool in names, f"{tool} missing from SYSTEM_TOOLS"
+
+    def test_node_repomix_are_not_external_system_tools(self):
+        """Repomix is a Python package now; node/npx are no longer host tools."""
+        from static.cli.dependencies import SYSTEM_TOOLS, PYTHON_PACKAGES
+
+        names = {t["name"] for t in SYSTEM_TOOLS}
+        assert "repomix" not in names
+        assert "node" not in names
+        assert "npx" not in names
+
+        # ...and repomix is declared as a Python dependency instead.
+        py_imports = {import_name for import_name, *_ in PYTHON_PACKAGES}
+        assert "repomix" in py_imports
+
+    def test_docker_is_marked_dast_only(self):
+        from static.cli.dependencies import SYSTEM_TOOLS
+
+        docker = next(t for t in SYSTEM_TOOLS if t["name"] == "docker")
+        assert docker.get("dast_only") is True
+
+    def test_dast_only_tool_not_required_without_dynamic(self, monkeypatch):
+        """A static-only run must not treat Docker as a required dependency.
+
+        ``check_dependencies()`` defaults to ``fail_on_missing=True``; before
+        this, a missing Docker raised even for static-only workflows, which
+        contradicts "Docker is required only for dynamic (DAST) mode".
+        """
+        from static.cli.dependencies import _tool_is_required
+        from static.core import runtime_context
+
+        monkeypatch.setattr(
+            runtime_context, "get_optional_contract", lambda: None
+        )
+        docker = {"name": "docker", "required": True, "dast_only": True}
+        assert _tool_is_required(docker) is False
+
+    def test_dast_only_tool_required_when_dynamic_enabled(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from static.cli.dependencies import _tool_is_required
+        from static.core import runtime_context
+
+        contract = SimpleNamespace(dynamic=SimpleNamespace(enabled=True))
+        monkeypatch.setattr(
+            runtime_context, "get_optional_contract", lambda: contract
+        )
+        docker = {"name": "docker", "required": True, "dast_only": True}
+        assert _tool_is_required(docker) is True
+
+    def test_non_dast_tool_stays_required(self):
+        """Static scanners are unaffected by the dast_only carve-out."""
+        from static.cli.dependencies import _tool_is_required
+
+        assert _tool_is_required({"name": "trivy", "required": True}) is True
+        assert _tool_is_required({"name": "x", "required": False}) is False
+
+    def test_fix_hint_for_tool_os_aware(self, monkeypatch):
+        import sys
+        from static.cli.dependencies import fix_hint_for_tool
+
+        tool = {
+            "name": "npx",
+            "binary": "npx",
+            "required": True,
+            "install_cmd_win": "Install Node.js from https://nodejs.org or winget install OpenJS.NodeJS",
+            "install_cmd_posix": "Install Node.js via brew install node or apt install nodejs",
+        }
+
+        # Assert the exact platform-specific hint is returned. Substring
+        # matching here (particularly against a URL) is both a weaker check and
+        # a pattern CodeQL flags as incomplete URL sanitization
+        # (py/incomplete-url-substring-sanitization).
+        monkeypatch.setattr(sys, "platform", "win32")
+        assert fix_hint_for_tool(tool) == tool["install_cmd_win"]
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        assert fix_hint_for_tool(tool) == tool["install_cmd_posix"]
+

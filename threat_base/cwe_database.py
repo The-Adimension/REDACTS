@@ -74,6 +74,25 @@ def cwe_source_url() -> str:
     return cwe_url()
 
 
+def cwe_data_dir(data_dir: Path | None = None) -> Path:
+    """Return the directory where the CWE CSV is expected to live.
+
+    Public accessor so callers do not reach into the module-private
+    ``_DATA_DIR``. Mirrors the pattern used for ATT&CK data in
+    :mod:`threat_base.prefetch`.
+    """
+    return data_dir or _DATA_DIR
+
+
+def is_cwe_data_available(data_dir: Path | None = None) -> bool:
+    """Return ``True`` if the CWE CSV is present on disk.
+
+    Presence only - integrity verification lives in :class:`CweDatabase`.
+    A public companion to :func:`threat_base.prefetch.is_attack_data_available`.
+    """
+    return (cwe_data_dir(data_dir) / CWE_CSV_FILENAME).is_file()
+
+
 CWE_ATTRIBUTION: str = (
     "CWE\u2122 content \u00a9 2006\u20132026 The MITRE Corporation. "
     "Used under the CWE Terms of Use (https://cwe.mitre.org/about/termsofuse.html)."
