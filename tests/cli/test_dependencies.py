@@ -145,11 +145,13 @@ class TestSystemToolsAndHints:
             "install_cmd_posix": "Install Node.js via brew install node or apt install nodejs",
         }
 
+        # Assert the exact platform-specific hint is returned. Substring
+        # matching here (particularly against a URL) is both a weaker check and
+        # a pattern CodeQL flags as incomplete URL sanitization
+        # (py/incomplete-url-substring-sanitization).
         monkeypatch.setattr(sys, "platform", "win32")
-        win_hint = fix_hint_for_tool(tool)
-        assert "winget" in win_hint or "https://nodejs.org" in win_hint
+        assert fix_hint_for_tool(tool) == tool["install_cmd_win"]
 
         monkeypatch.setattr(sys, "platform", "linux")
-        posix_hint = fix_hint_for_tool(tool)
-        assert "brew" in posix_hint or "apt" in posix_hint
+        assert fix_hint_for_tool(tool) == tool["install_cmd_posix"]
 
