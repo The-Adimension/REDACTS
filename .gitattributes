@@ -1,0 +1,28 @@
+# Line-ending policy.
+#
+# REDACTS verifies its threat-knowledge data files against SHA-256 digests
+# recorded in threat_base/data/checksums.json. Git's autocrlf translation
+# rewrites LF to CRLF on checkout, which changes those digests and makes the
+# loader abort with:
+#
+#     INTEGRITY FAILURE: yaml/<file> has been tampered with.
+#     This file may have been maliciously modified to bypass security
+#     detection rules.
+#
+# On Windows (core.autocrlf=true, the installer default) that fired on every
+# fresh clone - telling an analyst their detection rules may have been
+# tampered with when only the line endings had changed. Marking these paths
+# `-text` keeps them byte-identical on every platform so the digests hold.
+#
+# Do not remove these rules without also changing how checksums are computed.
+
+threat_base/data/yaml/*.yaml   -text
+threat_base/data/yara/*.yar    -text
+threat_base/data/checksums.json -text
+
+# Detection fixtures are matched byte-wise by YARA and the regex rules; keep
+# them stable across platforms for the same reason.
+tests/data/php/**              -text
+
+# Captured CLI output is reproduced verbatim in the user guide.
+docs/captures/*.txt            -text
