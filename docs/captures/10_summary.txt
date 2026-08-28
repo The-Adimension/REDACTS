@@ -1,0 +1,19 @@
+  Scan complete in 779.5s - no errors
+                      Scan Summary                      
+┌───────────┬──────────────────────────────────────────┐
+│ Phase     │ Result                                   │
+├───────────┼──────────────────────────────────────────┤
+│ Evidence  │ 14534 files                              │
+│ Audit     │ LOW | Delta1 files, 4 findings           │
+│ Tool Scan │ 0 findings                               │
+│ Combined  │ 4 total (4 forensic + 0 tool)            │
+│ Duration  │ 779.5s                                   │
+└───────────┴──────────────────────────────────────────┘
+
+  Generated reports:
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_forensic_20260828_100450.html
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_forensic_20260828_100450.json
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_forensic_20260828_100450.md
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_sarif_20260828_095159.json
+
+SCAN EXIT: 0

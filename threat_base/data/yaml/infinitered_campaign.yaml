@@ -1,129 +1,141 @@
+# INFINITERED - GTIG-attributed evidence ONLY.
+#
+# Every indicator in this file is published by the Google Threat Intelligence
+# Group (GTIG) for the INFINITERED family / UNC6508. A hit here is family
+# evidence and may be reported as conclusive.
+#
+# REDCap Community Forum / Vanderbilt advisory observations live in the sibling
+# file redcap_forum_observations.yaml. Do NOT add non-GTIG indicators here:
+# `conclusiveness: conclusive` is counted as a compromise indicator by
+# static/analyze/investigator.py and drives the CRITICAL verdict.
+#
+# GTIG did NOT confirm the initial access vector. Nothing here should be read
+# as an exploitation or entry-point indicator.
+
 campaign:
   name: INFINITERED
-  description: Active campaign targeting REDCap healthcare research installations (December 2025 - February 2026). Uses SQLite
-    persistence, hook injection, eval/gzinflate/base64_decode payload chains, and .user.ini auto_prepend_file for invisible
-    persistent access. Targets HIPAA-regulated environments.
-  first_seen: '2025-12-01T00:00:00.000Z'
-  last_seen: '2026-02-28T23:59:59.000Z'
+  actor: UNC6508
+  description: PRC-nexus intrusion set targeting US medical research institutions running
+    REDCap. GTIG documented a PHP implant set - web shell, credential harvester, backdoor,
+    and a dropper that re-injects itself into REDCap upgrade archives. Credentials are
+    harvested from login POSTs and hidden in the legitimate redcap_sessions table. C2 is
+    driven through a REDCap-TOKEN cookie gated on a magic flag. Initial access was not
+    confirmed by GTIG.
+  first_seen: '2023-09-01T00:00:00.000Z'
+  last_seen: '2025-11-30T23:59:59.000Z'
   severity: CRITICAL
   conclusiveness: conclusive
+  source_url: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research
+  retrieved: '2026-07-28'
+  yara_rule: G_Backdoor_INFINITERED_1
 indicators:
-- name: INFINITERED redcap.db file
-  description: SQLite database planted in REDCap directories as C2/persistence layer
-  pattern: '[file:name = ''redcap.db'' OR file:name = ''redcap_.db'']'
+- name: INFINITERED magic flag
+  description: Backdoor command gate. GTIG YARA G_Backdoor_INFINITERED_1 $magic_flag; the
+    same value is documented as the arbitrary-file-download command tag.
+  pattern: '[file:content_ref.payload_bin MATCHES ''ej671a16i7fd8202nu6ltfg5p6x7u'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: INFINITERED SQLite WAL/journal
-  description: SQLite write-ahead log or journal sidecar - proves active database writes
-  pattern: '[file:name LIKE ''%-wal'' OR file:name LIKE ''%-journal'' OR file:name LIKE ''%-shm'']'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED magic flag (base64)
+  description: Base64 form of the magic flag. GTIG YARA $magic_flag_base64.
+  pattern: '[file:content_ref.payload_bin MATCHES ''ZWo2NzFhMTZpN2ZkODIwMm51Nmx0Zmc1cDZ4N3U'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: INFINITERED hook injection
-  description: Injected functions in hook_functions.php not matching known REDCap hook names
-  pattern: '[file:name = ''hook_functions.php'' AND file:x_contains_unknown_functions = true]'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED GUID marker
+  description: Delimiter GUID used by the upgrade-intercept dropper. GTIG YARA $marker.
+  pattern: '[file:content_ref.payload_bin MATCHES ''b49e334d-9c01-463e-9bc5-00a6920fb66e'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: INFINITERED eval chain
-  description: eval(gzinflate(base64_decode())) payload delivery pattern
-  pattern: '[file:content_ref.payload_bin MATCHES ''eval\\s*\\(\\s*(?:gzinflate|gzuncompress)\\s*\\(\\s*base64_decode'']'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED GUID marker (base64)
+  description: Base64 form of the delimiter GUID. GTIG YARA $marker_base64.
+  pattern: '[file:content_ref.payload_bin MATCHES ''YjQ5ZTMzNGQtOWMwMS00NjNlLTliYzUtMDBhNjkyMGZiNjZl'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: database.php poisoning
-  description: Extra executable code beyond the 5 standard variables in database.php
-  pattern: '[file:name = ''database.php'' AND file:x_has_forbidden_patterns = true]'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED cookie gate
+  description: REDCAP-TOKEN cookie value sliced past the magic flag - the backdoor command
+    channel. GTIG YARA $s1. The cookie name alone is NOT family evidence.
+  pattern: '[file:content_ref.payload_bin MATCHES ''substr\\(\\$cookieValue, strlen\\(\\$magic_flag\\)\\);'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: .user.ini auto_prepend_file
-  description: PHP .user.ini with auto_prepend_file - invisible persistent backdoor
-  pattern: '[file:name = ''.user.ini'' AND file:content_ref.payload_bin MATCHES ''auto_prepend_file\\s*='']'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED credential-harvest INSERT
+  description: Stolen credentials written into the legitimate redcap_sessions table.
+    GTIG YARA $t2.
+  pattern: '[file:content_ref.payload_bin MATCHES ''INSERT INTO redcap_sessions \\(session_id,
+    session_data, session_expiration\\)'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: .htaccess auto_prepend/append_file
-  description: .htaccess with php_value auto_prepend_file or auto_append_file
-  pattern: '[file:name = ''.htaccess'' AND file:content_ref.payload_bin MATCHES ''php_value\\s+auto_(?:prepend|append)_file'']'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED credential encryption
+  description: Username/password joined with the [::] delimiter before encryption.
+    GTIG YARA $t3.
+  pattern: '[file:content_ref.payload_bin MATCHES ''encrypt\\(\\$currentUTC \\. ''''\\[::\\]''''
+    \\. \\$_POST\\[''''username''''\\]'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: PHP in upload directory
-  description: PHP files in edocs/uploads/temp - webshell delivery via upload
-  pattern: '[file:parent_directory_ref.path IN (''/edocs/'', ''/uploads/'', ''/temp/'') AND file:name LIKE ''%.php'']'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED session prefix
+  description: Harvested-credential session rows are keyed with this prefix, which lets an
+    analyst find them in a redcap_sessions dump.
+  pattern: '[file:content_ref.payload_bin MATCHES ''xc32038474a'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: Polyglot file
-  description: Image file containing embedded PHP code - bypasses extension filters
-  pattern: '[file:extensions[*] IN (''jpg'',''png'',''gif'') AND file:content_ref.payload_bin MATCHES ''<\\?php'']'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED upgrade-archive injection
+  description: Dropper reads REDCap upgrade-archive members and rewrites hooks/auth/upgrade
+    content so the implant survives an upgrade. GTIG YARA $u4-$u9.
+  pattern: '[file:content_ref.payload_bin MATCHES ''\\$zip->getFromName\\(\\$file_(?:hooks|auth|upgrade)\\)'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: .git directory in webroot
-  description: Git repository metadata exposed in webroot
-  pattern: '[directory:path LIKE ''%/.git'']'
-  pattern_type: stix
-  severity: HIGH
-  conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: Certificate/key in webroot
-  description: TLS certificates or private keys stored in web-accessible directory
-  pattern: '[file:name LIKE ''%.pem'' OR file:name LIKE ''%.key'' OR file:name LIKE ''%.crt'' OR file:name LIKE ''%.p12'']'
-  pattern_type: stix
-  severity: HIGH
-  conclusiveness: suspicious
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: Composer autoload tampering
-  description: Modified vendor/autoload.php - executes on every request
-  pattern: '[file:name = ''autoload.php'' AND file:parent_directory_ref.path = ''/vendor/'' AND file:hashes.SHA-256 != x_expected_hash]'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED backdoor command execution
+  description: shell_exec dispatch and upload handler in the backdoor body. GTIG YARA
+    $s4/$s5.
+  pattern: '[file:content_ref.payload_bin MATCHES ''\\$data = shell_exec\\(\\$command\\);|move_uploaded_file\\(\\$tmpPath,
+    \\$fileName\\)'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: External Module framework tampering
-  description: Modified files in ExternalModules/classes/ - affects all EM execution
-  pattern: '[file:parent_directory_ref.path = ''/ExternalModules/classes/'' AND file:hashes.SHA-256 != x_expected_hash]'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'
+- name: INFINITERED host beacon
+  description: System-information beacon fired when the backdoor receives an empty payload.
+    GTIG YARA $s2.
+  pattern: '[file:content_ref.payload_bin MATCHES ''getcwd\\(\\), php_uname\\(\\), phpversion\\(\\)'']'
   pattern_type: stix
   severity: CRITICAL
   conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: PHP content in non-PHP extension
-  description: File extension does not indicate PHP but AI content-type analysis (Magika) identifies the content as PHP source.
-  pattern: '[file:extensions[*] NOT IN (''php'',''phtml'',''phar'') AND file:x_magika_content_type = ''php'']'
-  pattern_type: stix
-  severity: CRITICAL
-  conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: SQLite content in non-database extension
-  description: File does not have a .db/.sqlite extension but AI content-type analysis identifies it as SQLite.
-  pattern: '[file:extensions[*] NOT IN (''db'',''sqlite'',''sqlite3'') AND file:x_magika_content_type = ''sqlite'']'
-  pattern_type: stix
-  severity: CRITICAL
-  conclusiveness: conclusive
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: Content-type masquerading (generic)
-  description: AI content-type analysis detected that a file's actual content does not match its extension.
-  pattern: '[file:x_magika_content_type != file:x_expected_content_type]'
-  pattern_type: stix
-  severity: HIGH
-  conclusiveness: suspicious
-  valid_from: '2025-12-01T00:00:00.000Z'
-- name: Polyglot file (AI-detected)
-  description: Magika's deep-learning model detects content structurally different from what extension implies.
-  pattern: '[file:x_magika_content_type IN (''php'',''javascript'',''shell'') AND file:extensions[*] IN (''jpg'',''png'',''gif'',''css'',''txt'')]'
-  pattern_type: stix
-  severity: HIGH
-  conclusiveness: suspicious
-  valid_from: '2025-12-01T00:00:00.000Z'
+  valid_from: '2023-09-01T00:00:00.000Z'
+  references:
+  - 'GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research'

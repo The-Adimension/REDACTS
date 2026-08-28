@@ -52,6 +52,9 @@ real_user_case.toml
 output/
 logs/
 tmp/
+# cache_root - holds community YARA rules fetched at runtime (third-party,
+# separately licensed) and threat-base downloads. Never commit these.
+cache/
 
 # Scan output artifacts
 *.sarif

@@ -120,6 +120,23 @@ class YaraAdapter(ExternalToolAdapter):
         rules.mkdir(parents=True, exist_ok=True)
         return rules
 
+    @staticmethod
+    def bundled_rules() -> list[Path]:
+        """Return the rules pinned in ``threat_base/data/yara/``.
+
+        These ship with REDACTS, are covered by
+        ``threat_base/data/checksums.json``, and are never fetched at scan time -
+        so vendor-published rules such as ``G_Backdoor_INFINITERED_1`` are
+        available offline and in air-gapped labs. Community rules remain
+        optional and network-dependent.
+        """
+        import threat_base
+
+        rules_dir = Path(threat_base.__file__).resolve().parent / "data" / "yara"
+        if not rules_dir.is_dir():
+            return []
+        return sorted(p for p in rules_dir.glob("*.yar") if p.is_file())
+
     def is_available(self) -> bool:
         return _resolve_venv_tool("yara") is not None
 
@@ -238,8 +255,10 @@ class YaraAdapter(ExternalToolAdapter):
         version = self.get_version()
         start = time.monotonic()
 
-        # Collect all rule files: user-supplied + community
-        rule_files: list[str] = []
+        # Collect all rule files: bundled (always) + user-supplied + community.
+        # Bundled rules are pinned on disk and integrity-verified, so they work
+        # offline and must not depend on the community fetch succeeding.
+        rule_files: list[str] = [str(p) for p in self.bundled_rules()]
         if rules_path:
             rule_files.append(rules_path)
         if use_community:

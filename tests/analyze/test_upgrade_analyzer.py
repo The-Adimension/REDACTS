@@ -19,9 +19,9 @@ from static.analyze.upgrade_analyzer import (
 
 class TestUpgradeAnalyzerInstantiation:
     def test_import_ok(self):
-        """All 11 compiled regexes should survive import."""
+        """All 12 compiled regexes should survive import."""
         ua = UpgradeAnalyzer()
-        assert len(ua.RULES) == 11, f"Expected 11 rules, got {len(ua.RULES)}"
+        assert len(ua.RULES) == 12, f"Expected 12 rules, got {len(ua.RULES)}"
 
     def test_every_rule_has_compiled_pattern(self):
         for rule in UpgradeAnalyzer.RULES:
@@ -43,13 +43,16 @@ _SAMPLES = {
     "UPG002": "preg_replace('/pattern/e', $replacement, $subject);",
     "UPG003": '${$callback}("malicious_arg");',
     "UPG010": 'if ($file !== "safe.php")',
-    "UPG011": '@unlink($path);',
     "UPG020": 'auto_prepend_file = /tmp/evil.php',
     "UPG021": 'fopen(".htaccess","w");',
-    "UPG030": 'return; // bail early',
     "UPG031": 'if (!$patch_applied) return',
     "UPG040": 'base64_decode($encoded);',
     "UPG050": '$db_password = "hunter2";',
+    # GTIG-published INFINITERED upgrade-archive injection (verbatim strings
+    # from YARA G_Backdoor_INFINITERED_1 $u4-$u9 / $marker).
+    "UPG060": '$file_content_upgrade = $zip->getFromName($file_upgrade);',
+    "UPG061": 'str_replace($search_content, $hooks_decode, $file_content_hooks);',
+    "UPG062": '$marker = "b49e334d-9c01-463e-9bc5-00a6920fb66e";',
 }
 
 

@@ -145,6 +145,40 @@ known_good_structure:
     modules:
       description: "External Modules directory - each module has config.json"
 
+# Named Persistence Paths
+#
+# Files GTIG documented as touched by the INFINITERED dropper and web shell.
+# The baseline diff is the scoping layer: a change to one of these is a
+# prioritisation signal for the analyst, NOT family attribution on its own.
+# Attribution requires a published SHA-256 match (IOC-INF-005) or a
+# G_Backdoor_INFINITERED_1 YARA hit.
+#
+# Source: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research
+# Retrieved: 2026-07-28
+
+infinitered_persistence_paths:
+  description: >-
+    Upgrade, authentication and hook files re-injected by the INFINITERED
+    dropper, plus the web shell filename. Weak alone - corroborate before
+    reporting as INFINITERED.
+  conclusiveness: suspicious
+  references:
+    - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+  upgrade_files:
+    - "Upgrade.php"
+    - "upgrade.php"
+  webshell_filenames:
+    - "help.php"
+  notes:
+    help_php: >-
+      GTIG documented a web shell named help.php. The filename alone is NOT
+      evidence - REDCap ships legitimate help pages. Corroborate with a hash or
+      YARA hit before treating it as INFINITERED.
+    auth_and_hooks: >-
+      The dropper rewrites the authentication and hook members of the upgrade
+      archive. Hook function names are validated separately against
+      hook_function_names below.
+
 # Legitimate Hook Function Names
 # ONLY these function names should appear in hook_functions.php.
 # Any other function name is a potential injection.

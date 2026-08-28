@@ -691,11 +691,13 @@ def _print_summary(
                     "LOW": "cyan",
                     "CLEAN": "bold green",
                 }.get(risk, "white")
+                delta_n = audit_result.delta_count
+                finding_n = audit_result.deep_scan_findings
                 table.add_row(
                     "Audit",
                     f"[{risk_style}]{risk}[/{risk_style}] | "
-                    f"Delta{audit_result.delta_count} files, "
-                    f"{audit_result.deep_scan_findings} findings",
+                    f"Delta {delta_n} file{'' if delta_n == 1 else 's'}, "
+                    f"{finding_n} finding{'' if finding_n == 1 else 's'}",
                 )
             else:
                 table.add_row("Audit", "[red]FAILED[/red]")

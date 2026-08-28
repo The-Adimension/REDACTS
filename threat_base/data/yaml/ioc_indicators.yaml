@@ -14,52 +14,102 @@ schema: "ioc_indicators/v1"
 # IoC Definitions (17 indicators)
 
 iocs:
- # INFINITERED Campaign
+ # REDCap Community Forum / Vanderbilt advisory observations
+ #
+ # Reported by the REDCap Consortium community, Dec 2025 - Feb 2026. Severities
+ # are unchanged. These are NOT attributed to INFINITERED: GTIG published none of
+ # them as that family. `conclusiveness: suspicious` means "strong lead, needs
+ # corroboration" - only GTIG-published evidence (IOC-INF-005..011, or a
+ # G_Backdoor_INFINITERED_1 YARA hit) is counted as a conclusive compromise
+ # indicator by static/analyze/investigator.py.
 
   - id: IOC-INF-001
-    name: "INFINITERED redcap.db file"
-    description: "SQLite database planted in REDCap directories as C2/persistence layer"
-    category: infinitered
-    conclusiveness: conclusive
+    name: "redcap.db SQLite artefact"
+    description: "SQLite database planted in REDCap directories. REDCap runs on MySQL, so a SQLite database in the tree is unexpected."
+    category: redcap_forum
+    conclusiveness: suspicious
     severity: CRITICAL
     detection_method: file_exists
     pattern: "**/redcap.db"
     filesystem_artifact: "redcap.db or redcap_.db files in any directory"
-    recommendation: "Isolate immediately. Inspect SQLite contents for exfiltrated data."
+    recommendation: "Isolate and inspect SQLite contents. Not family-attributed - corroborate with hash or YARA before calling it INFINITERED."
     references:
       - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: IOC-INF-002
-    name: "INFINITERED SQLite WAL/journal"
-    description: "SQLite write-ahead log or journal sidecar - proves active database writes"
-    category: infinitered
-    conclusiveness: conclusive
+    name: "SQLite WAL/journal sidecar"
+    description: "SQLite write-ahead log or journal sidecar - indicates active database writes"
+    category: redcap_forum
+    conclusiveness: suspicious
     severity: CRITICAL
     detection_method: file_exists
     pattern: "**/*-wal|**/*-journal|**/*-shm"
     filesystem_artifact: "redcap.db-wal, redcap.db-journal, redcap.db-shm files"
-    recommendation: "Sidecar files prove ACTIVE writes, not just a dropped file. Prioritize incident response."
+    recommendation: "Sidecar files indicate ACTIVE writes, not just a dropped file. Prioritize incident response."
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: IOC-INF-003
-    name: "INFINITERED hook injection"
+    name: "hook_functions.php injection"
     description: "Injected functions in hook_functions.php that don't match known REDCap hook names"
-    category: infinitered
-    conclusiveness: conclusive
+    category: redcap_forum
+    conclusiveness: suspicious
     severity: CRITICAL
     detection_method: function_enum
     filesystem_artifact: "Functions in hook_functions.php not in HOOK_FUNCTION_NAMES"
     recommendation: "Compare function names against HOOK_FUNCTION_NAMES whitelist."
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: IOC-INF-004
-    name: "INFINITERED eval chain"
-    description: "eval(gzinflate(base64_decode())) payload delivery pattern"
-    category: infinitered
-    conclusiveness: conclusive
+    name: "eval/gzinflate/base64 chain"
+    description: "eval(gzinflate(base64_decode())) payload delivery pattern - common to many PHP webshell families, not specific to one campaign"
+    category: redcap_forum
+    conclusiveness: suspicious
     severity: CRITICAL
     detection_method: regex
     pattern: 'eval\s*\(\s*(?:gzinflate|gzuncompress)\s*\(\s*base64_decode'
     pattern_flags: IGNORECASE
-    recommendation: "Known INFINITERED payload delivery. Isolate and analyze."
+    recommendation: "Obfuscated payload delivery. Isolate and analyze. Attribution requires a hash or YARA match."
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
+
+ # GTIG-published INFINITERED / UNC6508 evidence
+ #
+ # Source: Google Threat Intelligence Group, retrieved 2026-07-28
+ #   https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research
+ #
+ # An exact SHA-256 match against a published digest is family attribution and is
+ # the only filesystem evidence conclusive on its own. Roles reported for the
+ # individual digests differ between GTIG and secondary mirrors, so the digests
+ # are recorded without asserting a per-file role - see USER_GUIDE.
+
+  - id: IOC-INF-005
+    name: "INFINITERED implant (GTIG-published digest)"
+    description: >-
+      File matches a SHA-256 digest published by GTIG for the INFINITERED implant
+      set (web shell, credential harvester, backdoor, dropper). An exact match is
+      family attribution.
+    category: infinitered
+    conclusiveness: conclusive
+    severity: CRITICAL
+    detection_method: hash_match
+    filesystem_artifact: "Any file whose SHA-256 matches a published INFINITERED digest"
+    known_bad_sha256:
+      - "ba6b73b0ca0dc7f86b3b397893ac32d729fd53f9df20643288f141f29d020af7"
+      - "db65c1b9f9e4cb4d729f45ad4b6fcf3e277caf9eb4c875425dec93fd883f9136"
+      - "c1ac43d23f89d41eb4ff131678ab562ab2cfed9aa334b13767ef141d303b0e5b"
+      - "8f0158855a656b629ca76ebca565f18bc25563ded34b65d6771632c20edb68ec"
+      - "51a57bfc9ed3eb6451c1c289607814d59e1698c666fb97ac5f694c398f23d045"
+      - "4efbef69eb3b09bacff892d6a55778d07c418e7f15eba3cf1245e8cdfd8dda0b"
+      - "58bb25777e0aa86bcd2125101e0bca4e8732b03d91bd8d2f205b446a2a8d5c86"
+    recommendation: >-
+      Confirmed INFINITERED implant. Preserve the file and surrounding timestamps,
+      isolate the host, and follow your incident-response process. Do not delete
+      before imaging. Report to your security team and the REDCap Consortium.
+    cwe: CWE-506
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
 
  # Configuration Persistence
 
@@ -122,7 +172,9 @@ iocs:
     name: ".git directory in webroot"
     description: "Git repository metadata exposed in webroot"
     category: file_presence
-    conclusiveness: conclusive
+    # Exposure/hygiene, not proof of compromise - must not be counted as a
+    # conclusive compromise indicator. Severity is unchanged.
+    conclusiveness: suspicious
     severity: HIGH
     detection_method: directory_exists
     pattern: "**/.git"
@@ -184,16 +236,19 @@ iocs:
     name: "SQLite content in non-database extension"
     description: >-
       File does not have a .db/.sqlite extension but AI content-type analysis
-      identifies it as SQLite. INFINITERED drops credential-harvesting SQLite
-      databases under camouflaged names to survive manual cleanup.
-    category: infinitered
-    conclusiveness: conclusive
+      identifies it as SQLite. A database hidden under a camouflaged name is
+      anomalous in a REDCap tree, which uses MySQL exclusively.
+    category: redcap_forum
+    conclusiveness: suspicious
     severity: CRITICAL
     detection_method: magika_content_type
     filesystem_artifact: "Any non-.db file whose content is SQLite (e.g. .tmp, .dat, .log)"
     recommendation: >-
-      CONCLUSIVE data exfiltration indicator. Inspect SQLite contents for
-      harvested credentials or PHI. REDCap uses MySQL exclusively - SQLite is anomalous.
+      Inspect SQLite contents for harvested credentials or PHI. REDCap uses MySQL
+      exclusively - SQLite is anomalous. Attribution to a specific family requires
+      a hash or YARA match.
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: IOC-CT-003
     name: "Content-type masquerading (generic)"

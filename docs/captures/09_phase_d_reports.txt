@@ -1,0 +1,5 @@
+[D] Generating reports...
+2026-08-28 10:04:50,789 [INFO] static.report.generator: Generated 3 forensic reports in C:\Projects\redacts-release\output\scan_20260828_095159
+  Cleaned up 3 transient directories
+
+===============================================================

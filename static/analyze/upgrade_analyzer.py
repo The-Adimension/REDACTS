@@ -111,17 +111,59 @@ class UpgradeAnalyzer:
             "message": "Conditional file deletion (may skip infected files)",
             "recommendation": "Verify all files listed for deletion are actually deleted.",
         },
+        # UPG011 (bare `@?unlink(...)`) was removed: REDCap's own upgrade routine
+        # deletes files as normal housekeeping, so the rule fired on every
+        # upgrade script and buried the real signals below.
+
+        # ===== INFINITERED UPGRADE-ARCHIVE INJECTION (GTIG) =====
+        # Published mechanism: the dropper opens the REDCap upgrade archive,
+        # pulls the hooks/auth/upgrade members, and rewrites them so the implant
+        # is re-injected on every upgrade. Strings are verbatim from GTIG YARA
+        # G_Backdoor_INFINITERED_1 ($u4-$u9, $marker).
+        # Source: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research
+        # Retrieved: 2026-07-28
         {
-            "id": "UPG011",
-            "severity": "HIGH",
-            "category": "file_deletion_bypass",
-            "files": ["Upgrade.php"],
+            "id": "UPG060",
+            "severity": "CRITICAL",
+            "category": "infinitered",
+            "files": ["Upgrade.php", "upgrade.php"],
             "pattern": re.compile(
-                r"""@?unlink\s*\([^)]*\)""",
+                r"""\$zip->getFromName\s*\(\s*\$file_(?:hooks|auth|upgrade)\s*\)"""
+            ),
+            "message": "INFINITERED upgrade-archive injection: reads hooks/auth/upgrade from the upgrade ZIP (GTIG)",
+            "recommendation": (
+                "GTIG-published INFINITERED persistence mechanism. Preserve the file "
+                "and timestamps, isolate the host, and verify the integrity of your "
+                "REDCap upgrade packages before re-running them."
+            ),
+        },
+        {
+            "id": "UPG061",
+            "severity": "CRITICAL",
+            "category": "infinitered",
+            "files": ["Upgrade.php", "upgrade.php"],
+            "pattern": re.compile(
+                r"""str_replace\s*\(\s*\$search_content\s*,\s*\$(?:hooks|auth|upgrade)_decode\s*,"""
+            ),
+            "message": "INFINITERED upgrade-archive rewrite: re-injects implant into upgrade content (GTIG)",
+            "recommendation": (
+                "GTIG-published INFINITERED re-injection step. Same handling as UPG050."
+            ),
+        },
+        {
+            "id": "UPG062",
+            "severity": "CRITICAL",
+            "category": "infinitered",
+            "files": ["Upgrade.php", "upgrade.php"],
+            "pattern": re.compile(
+                r"""b49e334d-9c01-463e-9bc5-00a6920fb66e""",
                 re.IGNORECASE
             ),
-            "message": "File deletion with @ error suppression",
-            "recommendation": "Log all file deletions. Don't suppress errors.",
+            "message": "INFINITERED GUID marker in upgrade routine (GTIG)",
+            "recommendation": (
+                "GTIG-published delimiter GUID used by the INFINITERED dropper. "
+                "Confirmed family evidence - follow your incident-response process."
+            ),
         },
 
         # ===== PERSISTENCE INJECTION =====
@@ -151,18 +193,9 @@ class UpgradeAnalyzer:
         },
 
         # ===== SKIP LOGIC / VERIFICATION BYPASS =====
-        {
-            "id": "UPG030",
-            "severity": "HIGH",
-            "category": "skip_logic",
-            "files": ["Upgrade.php"],
-            "pattern": re.compile(
-                r"""return|die|exit|skip|continue\s*(?:;|//|#)""",
-                re.IGNORECASE
-            ),
-            "message": "Early exit/skip in upgrade routine",
-            "recommendation": "Verify this skip is intentional and not bypassing steps.",
-        },
+        # UPG030 (bare `return|die|exit|skip|continue`) was removed: it matched
+        # ordinary control flow in every PHP file, producing noise rather than
+        # evidence. UPG031 keeps the specific "skip if empty" shape.
         {
             "id": "UPG031",
             "severity": "HIGH",

@@ -2,8 +2,12 @@
 
 Validates ``database.php``, ``.htaccess``, ``.user.ini``,
 ``hook_functions.php`` and ``cron.php`` --- the five files most
-frequently weaponised in REDCap compromise scenarios catalogued by the
-INFINITERED disclosure (May 2025).
+frequently weaponised in REDCap compromise scenarios reported by the
+REDCap Community Forum / Vanderbilt advisories (Dec 2025 - Feb 2026).
+
+These are REDCap-specific hardening checks, not family attribution.
+GTIG-published INFINITERED evidence (hashes, YARA, implant literals) is
+carried separately in ``threat_base/data/yaml/infinitered_campaign.yaml``.
 """
 
 from __future__ import annotations

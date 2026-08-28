@@ -1,0 +1,14 @@
+│ |                         REDACTS v4.0.0                      |                                                     │
+│ |          REDCap Arbitrary Code Threat Scan                    |                                                   │
+│ |                                                               |                                                   │
+│ |   Automated forensic analysis for REDCap deployments          |                                                   │
+│ |   Semgrep * Trivy * tree-sitter * Magika * YARA * DAST       |                                                    │
+│ ++                                                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────── Disclaimer ─────────────────────────────────────────────────────┐
+│ !  DISCLAIMER: REDACTS is a forensic analysis AID. It does not replace                                              │
+│    thorough manual review by qualified security professionals. Results                                              │
+│    are not guaranteed to be complete or definitive. Use as an auxiliary                                             │
+│    tool within your incident response workflow, not as a sole determination.                                        │
+│    © 2024–2026 The Adimension / Shehab Anwer — atrium@theadimension.com                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

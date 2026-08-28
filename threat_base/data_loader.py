@@ -2,7 +2,8 @@
 
 The ``data/yaml/`` directory holds the security rules, IoC indicators,
 sensitive-data patterns, MITRE/CVSS/CWE mappings, REDCap baseline
-structure, attack vectors, and InfiniteRed campaign data. This module
+structure, attack vectors, GTIG-attributed INFINITERED campaign data, and
+REDCap Community Forum observations. This module
 loads them, compiles their regex patterns at import time, and verifies
 each file against ``data/checksums.json``.
 
@@ -321,13 +322,39 @@ def load_attack_vectors() -> list[dict[str, Any]]:
 
 
 def load_infinitered_campaign() -> dict[str, Any]:
-    """Load INFINITERED campaign data from YAML.
+    """Load GTIG-attributed INFINITERED campaign data from YAML.
+
+    Indicators here are published by the Google Threat Intelligence Group for
+    the INFINITERED family / UNC6508, so a hit is family evidence and carries
+    ``conclusiveness: conclusive``.
+
+    REDCap Consortium community observations are a separate evidence stream -
+    see :func:`load_redcap_forum_observations`.
 
     Returns a dict with keys: campaign, indicators
     """
     data = _load_yaml("infinitered_campaign.yaml")
     logger.debug(
-        "Loaded INFINITERED campaign: %d indicators",
+        "Loaded INFINITERED campaign (GTIG): %d indicators",
+        len(data.get("indicators", [])),
+    )
+    return data
+
+
+def load_redcap_forum_observations() -> dict[str, Any]:
+    """Load REDCap Community Forum / Vanderbilt advisory observations from YAML.
+
+    REDCap-specific persistence and webroot-hygiene patterns reported by the
+    Consortium community. Severities match the original records; they carry
+    ``conclusiveness: suspicious`` because they are strong leads rather than
+    family attribution - only GTIG-published evidence is counted as a
+    conclusive compromise indicator.
+
+    Returns a dict with keys: campaign, indicators
+    """
+    data = _load_yaml("redcap_forum_observations.yaml")
+    logger.debug(
+        "Loaded REDCap forum observations: %d indicators",
         len(data.get("indicators", [])),
     )
     return data

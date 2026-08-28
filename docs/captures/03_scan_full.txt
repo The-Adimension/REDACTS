@@ -1,0 +1,289 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ++                                                                                                                  │
+│ |                         REDACTS v4.0.0                      |                                                     │
+│ |          REDCap Arbitrary Code Threat Scan                    |                                                   │
+│ |                                                               |                                                   │
+│ |   Automated forensic analysis for REDCap deployments          |                                                   │
+│ |   Semgrep * Trivy * tree-sitter * Magika * YARA * DAST       |                                                    │
+│ ++                                                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────── Disclaimer ─────────────────────────────────────────────────────┐
+│ !  DISCLAIMER: REDACTS is a forensic analysis AID. It does not replace                                              │
+│    thorough manual review by qualified security professionals. Results                                              │
+│    are not guaranteed to be complete or definitive. Use as an auxiliary                                             │
+│    tool within your incident response workflow, not as a sole determination.                                        │
+│    © 2024–2026 The Adimension / Shehab Anwer — atrium@theadimension.com                                             │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Preflight verification
+Preflight warnings: 1 tool(s) unavailable - reduced coverage
+                                                   Preflight Status                                                    
+┌─────┬────────────────────────────────────┬────────┬──────────┬─────────────────┬────────────────────────────────────┐
+│ L   │ Check                              │ Tier   │ Status   │ Version         │ Detail / Fix                       │
+├─────┼────────────────────────────────────┼────────┼──────────┼─────────────────┼────────────────────────────────────┤
+│ 1   │ Python runtime                     │ BLOCK  │ PASS     │ 3.12.10         │                                    │
+│ 2   │ chardet                            │ BLOCK  │ PASS     │ 7.6.0           │                                    │
+│ 2   │ magika                             │ BLOCK  │ PASS     │ 1.0.3           │                                    │
+│ 2   │ paramiko                           │ BLOCK  │ PASS     │ 5.0.0           │                                    │
+│ 2   │ requests                           │ BLOCK  │ PASS     │ 2.34.2          │                                    │
+│ 2   │ py7zr                              │ BLOCK  │ PASS     │ 1.1.3           │                                    │
+│ 2   │ rarfile                            │ BLOCK  │ PASS     │ 4.5             │                                    │
+│ 2   │ rich                               │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ pyyaml                             │ BLOCK  │ PASS     │ 6.0.3           │                                    │
+│ 2   │ tree-sitter                        │ BLOCK  │ PASS     │ 0.26.0          │                                    │
+│ 2   │ tree-sitter-php                    │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ stix2                              │ BLOCK  │ PASS     │ 3.0.2           │                                    │
+│ 2   │ semgrep                            │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ repomix                            │ BLOCK  │ PASS     │ 0.5.0           │                                    │
+│ 2   │ playwright                         │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ pytest-asyncio                     │ BLOCK  │ PASS     │ 1.4.0           │                                    │
+│ 3   │ IoC Database                       │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Attack Vectors                     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Sensitive Data Patterns            │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ CWE Database                       │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ MITRE ATT&CK Mapping               │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data: yaml/attack_vectors.yaml     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data:                              │ BLOCK  │ PASS     │ -               │                                    │
+│     │ yaml/infinitered_campaign.yaml     │        │          │                 │                                    │
+│ 3   │ Data: yaml/ioc_indicators.yaml     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data: yaml/mitre_mapping.yaml      │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data: yaml/redcap_baseline.yaml    │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data:                              │ BLOCK  │ PASS     │ -               │                                    │
+│     │ yaml/redcap_forum_observations.ya… │        │          │                 │                                    │
+│ 3   │ Data: yaml/security_rules.yaml     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data:                              │ BLOCK  │ PASS     │ -               │                                    │
+│     │ yaml/sensitive_data_patterns.yaml  │        │          │                 │                                    │
+│ 3   │ ATT&CK Enterprise                  │ WARN   │ PASS     │ -               │ Full ATT&CK Enterprise bundle      │
+│     │                                    │        │          │                 │ available                          │
+│ 4   │ trivy                              │ BLOCK  │ PASS     │ Version: 0.58.2 │                                    │
+│ 4   │ yara                               │ BLOCK  │ PASS     │ 4.5.2           │                                    │
+│ 4   │ semgrep                            │ BLOCK  │ PASS     │ 1.175.0         │                                    │
+│ 4   │ docker                             │ WARN   │ WARN     │ -               │ 'docker' not found on PATH -       │
+│     │                                    │        │          │                 │ Required for DAST (dynamic         │
+│     │                                    │        │          │                 │ application security testing)      │
+│     │                                    │        │          │                 │ disabled                           │
+│     │                                    │        │          │                 │ fix: winget install                │
+│     │                                    │        │          │                 │ Docker.DockerDesktop --source      │
+│     │                                    │        │          │                 │ winget or download from            │
+│     │                                    │        │          │                 │ https://docker.com                 │
+│ 5   │ Network                            │ WARN   │ PASS     │ -               │ Online - enrichment services       │
+│     │                                    │        │          │                 │ reachable                          │
+└─────┴────────────────────────────────────┴────────┴──────────┴─────────────────┴────────────────────────────────────┘
+
+  !  REDUCED COVERAGE: docker unavailable - 'docker' not found on PATH - Required for DAST (dynamic application 
+security testing) disabled
+
+
+  [NOTICE] Reduced CWE enrichment - the scan will continue.
+    The CWE weakness catalog (cwec_v4.19.csv) is not installed.
+    Detection is unaffected, but findings will not be labelled with CWE
+    weakness IDs, names, descriptions, or mitigation guidance.
+    To include full CWE context, stop now (Ctrl+C), update, then re-run:
+      - Automatic:  python main.py update cwe
+      - Manual:     download https://cwe.mitre.org/data/csv/1000.csv.zip
+                    and place 'cwec_v4.19.csv' into C:\Projects\redacts-release\threat_base\data
+
+  Case ID:    CASE-REDCAP-15.7.4
+  Target:     C:\Projects\New folder (2)\redcap\redcap_v15.7.4-server.zip
+  Reference:  C:\Projects\New folder (2)\redcap\redcap15.7.4-source.zip
+
+Running full scan
+  Target:    C:\Projects\New folder (2)\redcap\redcap_v15.7.4-server.zip
+  Reference: C:\Projects\New folder (2)\redcap\redcap15.7.4-source.zip
+  Output:    C:\Projects\redacts-release\output\scan_20260828_095159
+  Timeout:   3600s | Max files: 50,000
+
+[A] Evidence collection...
+2026-08-28 09:51:59,813 [INFO] static.scanners.magika_adapter: Magika model loaded - AI content-type detection enabled
+    [1/5] Loading source: C:\Projects\New folder (2)\redcap\redcap_v15.7.4-server.zip
+2026-08-28 09:51:59,814 [INFO] static.collect.collector: [1/5] Loading source: C:\Projects\New folder (2)\redcap\redcap_v15.7.4-server.zip
+2026-08-28 09:51:59,814 [INFO] static.collect.loaders: Auto-detected loader: archive for source: C:\Projects\New folder (2)\redcap\redcap_v15.7.4-server.zip
+2026-08-28 09:52:09,823 [INFO] static.collect.loaders: Extracted 18171 entries from ZIP
+2026-08-28 09:52:09,828 [INFO] static.collect.loaders: Loaded REDCap from redcap_v15.7.4-server.zip -> C:\Projects\redacts-release\output\scan_20260828_095159\_staging\redcap_v15.7.4-server
+    [2/5] Building file manifest (hashing, timestamping, classifying...)
+2026-08-28 09:52:09,830 [INFO] static.collect.collector: [2/5] Building file manifest (hashing, timestamping, classifying...)
+2026-08-28 09:52:17,801 [INFO] static.collect.collector: [2/5] manifest progress: 500/14534 files
+2026-08-28 09:52:23,314 [INFO] static.collect.collector: [2/5] manifest progress: 750/14534 files
+2026-08-28 09:52:29,432 [INFO] static.collect.collector: [2/5] manifest progress: 1000/14534 files
+2026-08-28 09:52:34,562 [INFO] static.collect.collector: [2/5] manifest progress: 1250/14534 files
+2026-08-28 09:52:44,685 [INFO] static.collect.collector: [2/5] manifest progress: 1500/14534 files
+2026-08-28 09:52:49,966 [INFO] static.collect.collector: [2/5] manifest progress: 1750/14534 files
+2026-08-28 09:52:56,985 [INFO] static.collect.collector: [2/5] manifest progress: 2250/14534 files
+2026-08-28 09:53:04,371 [INFO] static.collect.collector: [2/5] manifest progress: 2750/14534 files
+2026-08-28 09:53:13,435 [INFO] static.collect.collector: [2/5] manifest progress: 3250/14534 files
+2026-08-28 09:53:18,766 [INFO] static.collect.collector: [2/5] manifest progress: 3500/14534 files
+2026-08-28 09:53:24,184 [INFO] static.collect.collector: [2/5] manifest progress: 3750/14534 files
+2026-08-28 09:53:29,482 [INFO] static.collect.collector: [2/5] manifest progress: 4000/14534 files
+2026-08-28 09:53:35,652 [INFO] static.collect.collector: [2/5] manifest progress: 4250/14534 files
+2026-08-28 09:53:40,997 [INFO] static.collect.collector: [2/5] manifest progress: 4500/14534 files
+2026-08-28 09:53:50,283 [INFO] static.collect.collector: [2/5] manifest progress: 5000/14534 files
+2026-08-28 09:53:59,783 [INFO] static.collect.collector: [2/5] manifest progress: 5500/14534 files
+2026-08-28 09:54:04,872 [INFO] static.collect.collector: [2/5] manifest progress: 5750/14534 files
+2026-08-28 09:54:14,293 [INFO] static.collect.collector: [2/5] manifest progress: 6250/14534 files
+2026-08-28 09:54:20,395 [INFO] static.collect.collector: [2/5] manifest progress: 6500/14534 files
+2026-08-28 09:54:31,591 [INFO] static.collect.collector: [2/5] manifest progress: 7000/14534 files
+2026-08-28 09:54:41,994 [INFO] static.collect.collector: [2/5] manifest progress: 7500/14534 files
+2026-08-28 09:54:50,453 [INFO] static.collect.collector: [2/5] manifest progress: 8000/14534 files
+2026-08-28 09:54:59,433 [INFO] static.collect.collector: [2/5] manifest progress: 8500/14534 files
+2026-08-28 09:55:08,217 [INFO] static.collect.collector: [2/5] manifest progress: 9000/14534 files
+2026-08-28 09:55:17,684 [INFO] static.collect.collector: [2/5] manifest progress: 9500/14534 files
+2026-08-28 09:55:27,027 [INFO] static.collect.collector: [2/5] manifest progress: 10000/14534 files
+2026-08-28 09:55:37,265 [INFO] static.collect.collector: [2/5] manifest progress: 10500/14534 files
+2026-08-28 09:55:43,834 [INFO] static.collect.collector: [2/5] manifest progress: 11250/14534 files
+2026-08-28 09:55:50,838 [INFO] static.collect.collector: [2/5] manifest progress: 11500/14534 files
+2026-08-28 09:55:58,314 [INFO] static.collect.collector: [2/5] manifest progress: 12000/14534 files
+2026-08-28 09:56:03,874 [INFO] static.collect.collector: [2/5] manifest progress: 12500/14534 files
+2026-08-28 09:56:10,946 [INFO] static.collect.collector: [2/5] manifest progress: 13000/14534 files
+2026-08-28 09:56:16,947 [INFO] static.collect.collector: [2/5] manifest progress: 13250/14534 files
+2026-08-28 09:56:22,150 [INFO] static.collect.collector: [2/5] manifest progress: 13500/14534 files
+2026-08-28 09:56:30,394 [INFO] static.collect.collector: [2/5] manifest progress: 14000/14534 files
+2026-08-28 09:56:38,147 [INFO] static.collect.collector: [2/5] manifest progress: 14500/14534 files
+2026-08-28 09:56:38,850 [INFO] static.collect.collector: [2/5] manifest progress: 14534/14534 files
+2026-08-28 09:56:38,850 [INFO] static.collect.manifest: Manifest built: 14534 files, 801 anomalies, 168.5 MB
+    [3/5] Analyzing anomalies...
+2026-08-28 09:56:38,862 [INFO] static.collect.collector: [3/5] Analyzing anomalies...
+    [4/5] Generating Repomix forensic snapshot...
+2026-08-28 09:56:38,864 [INFO] static.collect.collector: [4/5] Generating Repomix forensic snapshot...
+2026-08-28 09:56:38,865 [INFO] static.collect.repomix: Running repomix (Python API) on C:\Projects\redacts-release\output\scan_20260828_095159\_staging\redcap_v15.7.4-server...
+2026-08-28 10:00:51,669 [INFO] static.collect.collector: Repomix snapshot: 3609 files, 11900622 tokens
+    [5/5] Writing evidence package...
+2026-08-28 10:00:51,669 [INFO] static.collect.collector: [5/5] Writing evidence package...
+2026-08-28 10:00:52,195 [INFO] static.collect.manifest: Manifest saved: C:\Projects\redacts-release\output\scan_20260828_095159\manifest.json (14534 files)
+2026-08-28 10:00:52,233 [INFO] static.collect.collector: Evidence package written to: C:\Projects\redacts-release\output\scan_20260828_095159
+2026-08-28 10:00:52,233 [INFO] static.collect.collector: Evidence collected: 14534 files, 801 anomalies, 532.42s
+    14534 files catalogued, 801 anomalies
+
+[B] Baseline audit (reference vs target)...
+2026-08-28 10:00:52,496 [INFO] static.audit.pipeline: [audit] loading_reference (0%)
+    loading_reference (0%)
+2026-08-28 10:00:52,497 [INFO] static.collect.loaders: Auto-detected loader: archive for source: C:\Projects\New folder (2)\redcap\redcap15.7.4-source.zip
+2026-08-28 10:01:02,033 [INFO] static.collect.loaders: Extracted 18209 entries from ZIP
+2026-08-28 10:01:02,037 [INFO] static.collect.loaders: Loaded REDCap from redcap15.7.4-source.zip -> C:\Projects\redacts-release\output\scan_20260828_095159\audit\_ref_extract\redcap\redcap_v15.7.4
+2026-08-28 10:01:02,038 [INFO] static.audit.pipeline: [audit] loading_target (5%)
+    loading_target (5%)
+2026-08-28 10:01:02,039 [INFO] static.collect.loaders: Auto-detected loader: archive for source: C:\Projects\New folder (2)\redcap\redcap_v15.7.4-server.zip
+2026-08-28 10:01:11,272 [INFO] static.collect.loaders: Extracted 18171 entries from ZIP
+2026-08-28 10:01:11,277 [INFO] static.collect.loaders: Loaded REDCap from redcap_v15.7.4-server.zip -> C:\Projects\redacts-release\output\scan_20260828_095159\audit\_tgt_extract\redcap_v15.7.4-server
+2026-08-28 10:01:11,279 [INFO] static.audit.pipeline: [audit] baseline_diff (10%)
+    baseline_diff (10%)
+2026-08-28 10:01:11,279 [INFO] static.audit.baseline: Hashing reference tree: C:\Projects\redacts-release\output\scan_20260828_095159\audit\_ref_extract\redcap\redcap_v15.7.4
+2026-08-28 10:02:10,917 [INFO] static.audit.baseline: Hashing target tree: C:\Projects\redacts-release\output\scan_20260828_095159\audit\_tgt_extract\redcap_v15.7.4-server
+2026-08-28 10:03:05,411 [INFO] static.audit.baseline: Baseline diff complete - 5627 identical, 0 modified, 2 added, 0 removed (1 delta for deep analysis)
+2026-08-28 10:03:05,413 [INFO] static.audit.pipeline: Baseline diff: 5627 identical, 0 modified, 2 added, 0 removed -> 1 delta files
+2026-08-28 10:03:05,413 [INFO] static.audit.pipeline: [audit] deep_analysis (30%)
+    deep_analysis (30%)
+2026-08-28 10:03:05,415 [WARNING] threat_base.cwe_database: CWE CSV not found at C:\Projects\redacts-release\threat_base\data\cwec_v4.19.csv - CWE enrichment will be unavailable. Run 'python main.py update cwe' to download.
+2026-08-28 10:03:05,415 [WARNING] threat_base.cwe_database: CWE CSV not found: C:\Projects\redacts-release\threat_base\data\cwec_v4.19.csv
+2026-08-28 10:03:05,416 [INFO] static.audit.pipeline: [audit] deep_analysis/loading_metadata (30%)
+    deep_analysis/loading_metadata (30%)
+2026-08-28 10:03:05,416 [INFO] static.analyze.investigator: No manifest.json - treating C:\Projects\redacts-release\output\scan_20260828_095159\audit\_tgt_extract\redcap_v15.7.4-server as raw source directory
+2026-08-28 10:03:05,416 [INFO] static.audit.pipeline: [audit] deep_analysis/ioc_scan (36%)
+    deep_analysis/ioc_scan (36%)
+2026-08-28 10:03:10,241 [INFO] static.analyze.investigator: ioc_scan produced 4 findings
+2026-08-28 10:03:10,241 [INFO] static.audit.pipeline: [audit] deep_analysis/config_integrity (48%)
+    deep_analysis/config_integrity (48%)
+2026-08-28 10:03:12,402 [INFO] static.analyze.investigator: config_integrity produced 0 findings
+2026-08-28 10:03:12,402 [INFO] static.audit.pipeline: [audit] deep_analysis/sensitive_data (63%)
+    deep_analysis/sensitive_data (63%)
+2026-08-28 10:03:12,405 [INFO] threat_base.sensitive_data: Audit-mode scan: 0 findings across 1/1 delta files.
+2026-08-28 10:03:12,405 [INFO] static.analyze.investigator: sensitive_data produced 0 findings
+2026-08-28 10:03:12,405 [INFO] static.audit.pipeline: [audit] deep_analysis/attack_vector (78%)
+    deep_analysis/attack_vector (78%)
+2026-08-28 10:03:12,406 [INFO] static.audit.pipeline: [audit] deep_analysis/cwe_enrichment (30%)
+    deep_analysis/cwe_enrichment (30%)
+2026-08-28 10:03:12,408 [INFO] static.analyze.steps.cwe_enrichment: CWE enrichment: 0 names resolved, 0 recommendations backfilled
+2026-08-28 10:03:12,408 [INFO] static.audit.pipeline: [audit] deep_analysis/risk_calculation (87%)
+    deep_analysis/risk_calculation (87%)
+2026-08-28 10:03:12,408 [INFO] static.audit.pipeline: [audit] deep_analysis/consolidation (87%)
+    deep_analysis/consolidation (87%)
+2026-08-28 10:03:12,409 [INFO] static.analyze.investigator: Investigation report written to C:\Projects\redacts-release\output\scan_20260828_095159\audit\investigation\investigation_report.json
+2026-08-28 10:03:12,411 [INFO] static.audit.pipeline: [audit] deep_analysis/complete (90%)
+    deep_analysis/complete (90%)
+2026-08-28 10:03:12,412 [INFO] static.analyze.investigator: Investigation complete - 4 findings, risk=LOW, duration=7.0s
+2026-08-28 10:03:12,412 [INFO] static.audit.pipeline: [audit] generating_reports (92%)
+    generating_reports (92%)
+2026-08-28 10:03:12,454 [INFO] static.audit.pipeline: Wrote 3 audit report(s) to C:\Projects\redacts-release\output\scan_20260828_095159\audit\reports
+2026-08-28 10:03:12,454 [INFO] static.audit.pipeline: [audit] complete (100%)
+    complete (100%)
+    0 modified, 2 added, 0 removed | Risk: LOW
+
+[C] Tool orchestration (Semgrep + Trivy + YARA + Magika + tree-sitter)...
+2026-08-28 10:03:12,564 [INFO] static.scanners.orchestrator: Orchestrator: delta-aware mode - 1 files in scope
+2026-08-28 10:03:12,564 [INFO] static.scanners.orchestrator: REDACTS Orchestrator: Starting scan of C:\Projects\redacts-release\output\scan_20260828_095159\_staging\redcap_v15.7.4-server
+2026-08-28 10:03:12,564 [INFO] static.scanners.phases.discover_phase: Discovering scanner tools...
+2026-08-28 10:03:18,647 [INFO] static.scanners.phases.discover_phase:   Semgrep: available (v1.175.0)
+2026-08-28 10:03:18,912 [INFO] static.scanners.phases.discover_phase:   Trivy: available (v0.58.2)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.discover_phase:   YARA: available (v4.5.2)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.discover_phase:   Magika: available (v>=0.6.0)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.discover_phase:   tree-sitter-php: available (v)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.magika_phase: Magika file typing...
+2026-08-28 10:03:32,663 [INFO] static.scanners.phases.magika_phase:   Magika: typed 5629 files, 379 mismatches detected, 0 skipped (size)
+2026-08-28 10:03:32,663 [INFO] static.scanners.phases.semgrep_phase: Semgrep scan...
+2026-08-28 10:03:46,236 [INFO] static.scanners.phases.semgrep_phase:   Semgrep: 0 findings (0 new) in 10.6s
+2026-08-28 10:03:46,236 [INFO] static.scanners.phases.trivy_phase: Trivy scan...
+2026-08-28 10:04:40,345 [INFO] static.scanners.phases.trivy_phase:   Trivy: 56 CVEs, 0 secrets (0 new findings) in 54.0s
+2026-08-28 10:04:40,345 [INFO] static.scanners.phases.yara_phase: YARA scan...
+2026-08-28 10:04:40,358 [INFO] static.scanners.yara_adapter: Fetching community YARA rules: php-malware-finder (LGPL-3.0)
+2026-08-28 10:04:41,065 [INFO] static.scanners.yara_adapter: Sanitized php-malware-finder rules (stripped whitelist references)
+2026-08-28 10:04:41,065 [INFO] static.scanners.yara_adapter: Cached: C:\Projects\redacts-release\cache\yara_rules\php-malware-finder.yar (14477 bytes)
+2026-08-28 10:04:41,065 [INFO] static.scanners.yara_adapter: Fetching community YARA rules: signature-base-webshells (DRL-1.1)
+2026-08-28 10:04:41,754 [INFO] static.scanners.yara_adapter: Cached: C:\Projects\redacts-release\cache\yara_rules\signature-base-webshells.yar (300178 bytes)
+2026-08-28 10:04:41,755 [INFO] static.scanners.yara_adapter: Fetching community YARA rules: signature-base-php-webshells (DRL-1.1)
+2026-08-28 10:04:42,723 [INFO] static.scanners.yara_adapter: Cached: C:\Projects\redacts-release\cache\yara_rules\signature-base-php-webshells.yar (393194 bytes)
+2026-08-28 10:04:50,512 [INFO] static.scanners.phases.yara_phase:   YARA: filtered 149/149 matches to delta set
+2026-08-28 10:04:50,512 [INFO] static.scanners.phases.yara_phase:   YARA: 0 matches (0 critical)
+2026-08-28 10:04:50,512 [INFO] static.scanners.phases.regex_scanner_phase: Regex SecurityScanner...
+2026-08-28 10:04:50,528 [INFO] static.scanners.phases.regex_scanner_phase:   Regex scanner: 0 findings (supplementary)
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.tree_sitter_phase: tree-sitter enrichment...
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.tree_sitter_phase:   tree-sitter: enriched 0/0 PHP findings
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.correlate_phase: Cross-tool correlation...
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.correlate_phase:   Correlation: 0 findings corroborated by multiple tools
+2026-08-28 10:04:50,529 [INFO] static.scanners.orchestrator: REDACTS Orchestrator: Complete - 0 findings, 0 corroborated, 98.0s
+    0 findings from 5 tools
+      semgrep: OK
+      trivy: OK
+      yara: OK
+      magika: OK
+      tree_sitter: OK
+    379 suspicious files (multi-tool corroboration)
+      update-webpack-packages.bat - 1 tools, severity=info
+      API/examples/curl/config - 1 tools, severity=info
+      API/examples/perl/delete_arms.pl - 1 tools, severity=info
+      API/examples/perl/delete_dags.pl - 1 tools, severity=info
+      API/examples/perl/delete_events.pl - 1 tools, severity=info
+      discover: 6.4s
+      magika: 13.7s
+      semgrep: 13.6s
+      trivy: 54.1s
+      yara: 10.2s
+      regex_scanner: 0.0s
+      tree_sitter: 0.0s
+      correlate: 0.0s
+      dast: 0.0s
+      total: 98.0s
+
+
+[D] Generating reports...
+2026-08-28 10:04:50,789 [INFO] static.report.generator: Generated 3 forensic reports in C:\Projects\redacts-release\output\scan_20260828_095159
+  Cleaned up 3 transient directories
+
+===============================================================
+  Scan complete in 779.5s - no errors
+                      Scan Summary                      
+┌───────────┬──────────────────────────────────────────┐
+│ Phase     │ Result                                   │
+├───────────┼──────────────────────────────────────────┤
+│ Evidence  │ 14534 files                              │
+│ Audit     │ LOW | Delta1 files, 4 findings           │
+│ Tool Scan │ 0 findings                               │
+│ Combined  │ 4 total (4 forensic + 0 tool)            │
+│ Duration  │ 779.5s                                   │
+└───────────┴──────────────────────────────────────────┘
+
+  Generated reports:
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_forensic_20260828_100450.html
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_forensic_20260828_100450.json
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_forensic_20260828_100450.md
+    -> C:\Projects\redacts-release\output\scan_20260828_095159\redacts_sarif_20260828_095159.json
+
+SCAN EXIT: 0

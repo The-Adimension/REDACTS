@@ -23,6 +23,7 @@ from threat_base.data_loader import (
     _verify_file,
     load_attack_vectors,
     load_infinitered_campaign,
+    load_redcap_forum_observations,
     load_ioc_indicators,
     load_mitre_mapping,
     load_redcap_baseline,
@@ -176,7 +177,14 @@ class TestLoadAttackVectors:
 
 
 class TestLoadInfiniteredCampaign:
-    """Verify infinitered_campaign.yaml loads."""
+    """Verify infinitered_campaign.yaml loads and stays GTIG-only.
+
+    The two evidence streams are deliberately separate: this file carries only
+    GTIG-published INFINITERED / UNC6508 markers, while REDCap Consortium
+    community observations live in redcap_forum_observations.yaml. Mixing them
+    is what previously let generic PHP persistence be reported as a conclusive
+    INFINITERED compromise.
+    """
 
     def test_returns_dict(self) -> None:
         data = load_infinitered_campaign()
@@ -190,7 +198,65 @@ class TestLoadInfiniteredCampaign:
 
     def test_indicators_populated(self) -> None:
         data = load_infinitered_campaign()
-        assert len(data.get("indicators", [])) >= 15  # currently 17
+        assert len(data.get("indicators", [])) >= 10
+
+    def test_campaign_matches_gtig_reporting(self) -> None:
+        """Actor, date range and citation must match the GTIG blog."""
+        campaign = load_infinitered_campaign().get("campaign", {})
+        assert campaign["actor"] == "UNC6508"
+        assert campaign["first_seen"].startswith("2023-09")
+        assert campaign["last_seen"].startswith("2025-11")
+        assert "cloud.google.com" in campaign["source_url"]
+        assert campaign["retrieved"]
+
+    def test_every_indicator_is_cited(self) -> None:
+        """Attribution requires a citation on every GTIG-tagged indicator."""
+        for ind in load_infinitered_campaign().get("indicators", []):
+            refs = ind.get("references") or []
+            assert refs, f"{ind['name']} has no references"
+            assert any("cloud.google.com" in r for r in refs), ind["name"]
+
+    def test_no_generic_php_persistence_claimed_as_infinitered(self) -> None:
+        """Guard the regression: forum-sourced patterns must not live here.
+
+        SQLite redcap.db, eval/gzinflate chains and .user.ini auto_prepend are
+        REDCap Consortium observations, not GTIG-published INFINITERED evidence.
+        """
+        blob = json.dumps(load_infinitered_campaign()).lower()
+        for generic in ("redcap.db", "gzinflate", "auto_prepend_file", ".htaccess"):
+            assert generic not in blob, f"{generic!r} is not GTIG INFINITERED evidence"
+
+
+class TestLoadRedcapForumObservations:
+    """Verify the REDCap Consortium stream loads with its own attribution."""
+
+    def test_indicators_populated(self) -> None:
+        data = load_redcap_forum_observations()
+        assert len(data.get("indicators", [])) >= 15
+
+    def test_never_conclusive(self) -> None:
+        """Forum observations are leads, not compromise proof.
+
+        ``conclusiveness`` is counted by static/analyze/investigator.py as a
+        confirmed compromise indicator, so a hygiene finding must not carry it.
+        """
+        for ind in load_redcap_forum_observations().get("indicators", []):
+            assert ind["conclusiveness"] != "conclusive", ind["name"]
+
+    def test_severities_preserved(self) -> None:
+        """Relabelling must not have downgraded the Consortium's severities."""
+        sevs = {
+            i["severity"] for i in load_redcap_forum_observations()["indicators"]
+        }
+        assert "CRITICAL" in sevs and "HIGH" in sevs
+
+    def test_every_indicator_is_cited(self) -> None:
+        for ind in load_redcap_forum_observations().get("indicators", []):
+            assert ind.get("references"), f"{ind['name']} has no references"
+
+    def test_not_attributed_to_infinitered(self) -> None:
+        blob = json.dumps(load_redcap_forum_observations()).lower()
+        assert "infinitered" not in blob
 
 
 # --- Integrity verification -------

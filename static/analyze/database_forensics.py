@@ -84,7 +84,10 @@ class DatabaseForensics:
         """Scan for database-level compromise indicators."""
         report = DatabaseForensicsReport()
 
-        # 1. Check for redcap.db (INFINITERED C2/persistence indicator)
+        # 1. Check for redcap.db. REDCap runs on MySQL, so a SQLite database in
+        #    the tree is anomalous - but this is a REDCap Community Forum
+        #    observation, not GTIG-published INFINITERED evidence. Family
+        #    attribution needs a published hash or a G_Backdoor_INFINITERED_1 hit.
         redcap_db = self._find_redcap_db(root)
         if redcap_db:
             report.has_redcap_db = True
