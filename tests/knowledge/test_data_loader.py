@@ -15,6 +15,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -31,6 +32,22 @@ from threat_base.data_loader import (
     load_sensitive_data_patterns,
     regenerate_checksums,
 )
+
+
+GTIG_HOST = "cloud.google.com"
+
+
+def _cites_gtig(text: str) -> bool:
+    """True if *text* carries a URL whose host is exactly the GTIG blog host.
+
+    Matched on the parsed hostname, not with ``in``: a substring test would
+    also accept ``https://evil.example/cloud.google.com`` (CodeQL
+    py/incomplete-url-substring-sanitization).
+    """
+    return any(
+        urlparse(token).hostname == GTIG_HOST
+        for token in re.findall(r"https?://\S+", text)
+    )
 
 
 # --- Real shipped YAML - smoke tests ---------------
@@ -206,7 +223,7 @@ class TestLoadInfiniteredCampaign:
         assert campaign["actor"] == "UNC6508"
         assert campaign["first_seen"].startswith("2023-09")
         assert campaign["last_seen"].startswith("2025-11")
-        assert "cloud.google.com" in campaign["source_url"]
+        assert _cites_gtig(campaign["source_url"])
         assert campaign["retrieved"]
 
     def test_every_indicator_is_cited(self) -> None:
@@ -214,7 +231,7 @@ class TestLoadInfiniteredCampaign:
         for ind in load_infinitered_campaign().get("indicators", []):
             refs = ind.get("references") or []
             assert refs, f"{ind['name']} has no references"
-            assert any("cloud.google.com" in r for r in refs), ind["name"]
+            assert any(_cites_gtig(r) for r in refs), ind["name"]
 
     def test_no_generic_php_persistence_claimed_as_infinitered(self) -> None:
         """Guard the regression: forum-sourced patterns must not live here.

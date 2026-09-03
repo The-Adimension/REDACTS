@@ -22,6 +22,7 @@ import hashlib
 import re
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -33,7 +34,21 @@ from threat_base.ioc_database import (
     IoCDatabase,
 )
 
-GTIG_URL = "cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+GTIG_HOST = "cloud.google.com"
+
+
+def _cites_gtig(text: str) -> bool:
+    """True if *text* carries a URL whose host is exactly the GTIG blog host.
+
+    Matched on the parsed hostname, not with ``in``: a substring test would
+    also accept ``https://evil.example/cloud.google.com`` (CodeQL
+    py/incomplete-url-substring-sanitization).
+    """
+    return any(
+        urlparse(token).hostname == GTIG_HOST
+        for token in re.findall(r"https?://\S+", text)
+    )
+
 
 # Literals copied verbatim from GTIG YARA rule G_Backdoor_INFINITERED_1.
 GTIG_LITERALS = {
@@ -85,7 +100,7 @@ def test_gtig_rule_is_attributed_and_cited(rule_id, rules_by_id) -> None:
     rule = rules_by_id[rule_id]
     assert rule["category"] == "infinitered"
     assert rule["severity"] == "CRITICAL"
-    assert GTIG_URL in " ".join(rule.get("references", []) + [rule.get("recommendation", "")])
+    assert _cites_gtig(" ".join(rule.get("references", []) + [rule.get("recommendation", "")]))
 
 
 def test_gtig_rules_do_not_fire_on_benign_redcap_code(rules_by_id) -> None:
@@ -147,7 +162,7 @@ def test_gtig_hash_ioc_is_conclusive_and_cited() -> None:
     assert ioc.conclusiveness is Conclusiveness.CONCLUSIVE
     assert len(ioc.known_bad_sha256) == 7
     assert all(len(h) == 64 for h in ioc.known_bad_sha256)
-    assert any(GTIG_URL in r for r in ioc.references)
+    assert any(_cites_gtig(r) for r in ioc.references)
 
 
 def test_hash_match_flags_only_exact_digests() -> None:
@@ -237,5 +252,5 @@ def test_gtig_yara_rule_is_pinned_on_disk() -> None:
     assert rule.is_file()
     body = rule.read_text(encoding="utf-8")
     assert "rule G_Backdoor_INFINITERED_1" in body
-    assert GTIG_URL in body
+    assert _cites_gtig(body)
     assert "$magic_flag" in body and "$marker" in body
