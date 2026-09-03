@@ -21,7 +21,7 @@ Licensed under the Apache License, Version 2.0
 Contact: atrium@theadimension.com
 """
 
-__version__ = "4.0.0"
+__version__ = "4.1.0"
 __author__ = "The Adimension / Shehab Anwer"
 
 from .core import REDACTSConfig

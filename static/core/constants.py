@@ -30,7 +30,7 @@ def __getattr__(name: str):  # noqa: D401 (PEP 562 module hook)
 
 # Canonical package version. Import this rather than hardcoding a
 # literal in report headers, SARIF tool blocks, or audit footers.
-VERSION: str = "4.0.0"
+VERSION: str = "4.1.0"
 
 # --- LANGUAGE_MAP  (file-extension -> human-readable language name) ---
 
