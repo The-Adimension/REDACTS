@@ -1,0 +1,54 @@
+[C] Tool orchestration (Semgrep + Trivy + YARA + Magika + tree-sitter)...
+2026-08-28 10:03:12,564 [INFO] static.scanners.orchestrator: Orchestrator: delta-aware mode - 1 files in scope
+2026-08-28 10:03:12,564 [INFO] static.scanners.orchestrator: REDACTS Orchestrator: Starting scan of C:\Projects\redacts-release\output\scan_20260828_095159\_staging\redcap_v15.7.4-server
+2026-08-28 10:03:12,564 [INFO] static.scanners.phases.discover_phase: Discovering scanner tools...
+2026-08-28 10:03:18,647 [INFO] static.scanners.phases.discover_phase:   Semgrep: available (v1.175.0)
+2026-08-28 10:03:18,912 [INFO] static.scanners.phases.discover_phase:   Trivy: available (v0.58.2)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.discover_phase:   YARA: available (v4.5.2)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.discover_phase:   Magika: available (v>=0.6.0)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.discover_phase:   tree-sitter-php: available (v)
+2026-08-28 10:03:18,943 [INFO] static.scanners.phases.magika_phase: Magika file typing...
+2026-08-28 10:03:32,663 [INFO] static.scanners.phases.magika_phase:   Magika: typed 5629 files, 379 mismatches detected, 0 skipped (size)
+2026-08-28 10:03:32,663 [INFO] static.scanners.phases.semgrep_phase: Semgrep scan...
+2026-08-28 10:03:46,236 [INFO] static.scanners.phases.semgrep_phase:   Semgrep: 0 findings (0 new) in 10.6s
+2026-08-28 10:03:46,236 [INFO] static.scanners.phases.trivy_phase: Trivy scan...
+2026-08-28 10:04:40,345 [INFO] static.scanners.phases.trivy_phase:   Trivy: 56 CVEs, 0 secrets (0 new findings) in 54.0s
+2026-08-28 10:04:40,345 [INFO] static.scanners.phases.yara_phase: YARA scan...
+2026-08-28 10:04:40,358 [INFO] static.scanners.yara_adapter: Fetching community YARA rules: php-malware-finder (LGPL-3.0)
+2026-08-28 10:04:41,065 [INFO] static.scanners.yara_adapter: Sanitized php-malware-finder rules (stripped whitelist references)
+2026-08-28 10:04:41,065 [INFO] static.scanners.yara_adapter: Cached: C:\Projects\redacts-release\cache\yara_rules\php-malware-finder.yar (14477 bytes)
+2026-08-28 10:04:41,065 [INFO] static.scanners.yara_adapter: Fetching community YARA rules: signature-base-webshells (DRL-1.1)
+2026-08-28 10:04:41,754 [INFO] static.scanners.yara_adapter: Cached: C:\Projects\redacts-release\cache\yara_rules\signature-base-webshells.yar (300178 bytes)
+2026-08-28 10:04:41,755 [INFO] static.scanners.yara_adapter: Fetching community YARA rules: signature-base-php-webshells (DRL-1.1)
+2026-08-28 10:04:42,723 [INFO] static.scanners.yara_adapter: Cached: C:\Projects\redacts-release\cache\yara_rules\signature-base-php-webshells.yar (393194 bytes)
+2026-08-28 10:04:50,512 [INFO] static.scanners.phases.yara_phase:   YARA: filtered 149/149 matches to delta set
+2026-08-28 10:04:50,512 [INFO] static.scanners.phases.yara_phase:   YARA: 0 matches (0 critical)
+2026-08-28 10:04:50,512 [INFO] static.scanners.phases.regex_scanner_phase: Regex SecurityScanner...
+2026-08-28 10:04:50,528 [INFO] static.scanners.phases.regex_scanner_phase:   Regex scanner: 0 findings (supplementary)
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.tree_sitter_phase: tree-sitter enrichment...
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.tree_sitter_phase:   tree-sitter: enriched 0/0 PHP findings
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.correlate_phase: Cross-tool correlation...
+2026-08-28 10:04:50,529 [INFO] static.scanners.phases.correlate_phase:   Correlation: 0 findings corroborated by multiple tools
+2026-08-28 10:04:50,529 [INFO] static.scanners.orchestrator: REDACTS Orchestrator: Complete - 0 findings, 0 corroborated, 98.0s
+    0 findings from 5 tools
+      semgrep: OK
+      trivy: OK
+      yara: OK
+      magika: OK
+      tree_sitter: OK
+    379 suspicious files (multi-tool corroboration)
+      update-webpack-packages.bat - 1 tools, severity=info
+      API/examples/curl/config - 1 tools, severity=info
+      API/examples/perl/delete_arms.pl - 1 tools, severity=info
+      API/examples/perl/delete_dags.pl - 1 tools, severity=info
+      API/examples/perl/delete_events.pl - 1 tools, severity=info
+      discover: 6.4s
+      magika: 13.7s
+      semgrep: 13.6s
+      trivy: 54.1s
+      yara: 10.2s
+      regex_scanner: 0.0s
+      tree_sitter: 0.0s
+      correlate: 0.0s
+      dast: 0.0s
+      total: 98.0s

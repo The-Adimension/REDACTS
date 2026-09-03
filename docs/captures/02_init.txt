@@ -1,0 +1,62 @@
+REDACTS Interactive Contract Builder (case.toml)
+==================================================
+
+Auto-detected scanners: regex, yara, trivy, semgrep
+[OK] Wrote contract template to C:\Projects\redacts-release\case.toml
+[OK] Contract passed schema_version = 2 validation.
+Preflight warnings: 1 tool(s) unavailable - reduced coverage
+                                                   Preflight Status                                                    
+┌─────┬────────────────────────────────────┬────────┬──────────┬─────────────────┬────────────────────────────────────┐
+│ L   │ Check                              │ Tier   │ Status   │ Version         │ Detail / Fix                       │
+├─────┼────────────────────────────────────┼────────┼──────────┼─────────────────┼────────────────────────────────────┤
+│ 1   │ Python runtime                     │ BLOCK  │ PASS     │ 3.12.10         │                                    │
+│ 2   │ chardet                            │ BLOCK  │ PASS     │ 7.6.0           │                                    │
+│ 2   │ magika                             │ BLOCK  │ PASS     │ 1.0.3           │                                    │
+│ 2   │ paramiko                           │ BLOCK  │ PASS     │ 5.0.0           │                                    │
+│ 2   │ requests                           │ BLOCK  │ PASS     │ 2.34.2          │                                    │
+│ 2   │ py7zr                              │ BLOCK  │ PASS     │ 1.1.3           │                                    │
+│ 2   │ rarfile                            │ BLOCK  │ PASS     │ 4.5             │                                    │
+│ 2   │ rich                               │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ pyyaml                             │ BLOCK  │ PASS     │ 6.0.3           │                                    │
+│ 2   │ tree-sitter                        │ BLOCK  │ PASS     │ 0.26.0          │                                    │
+│ 2   │ tree-sitter-php                    │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ stix2                              │ BLOCK  │ PASS     │ 3.0.2           │                                    │
+│ 2   │ semgrep                            │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ repomix                            │ BLOCK  │ PASS     │ 0.5.0           │                                    │
+│ 2   │ playwright                         │ BLOCK  │ PASS     │ -               │                                    │
+│ 2   │ pytest-asyncio                     │ BLOCK  │ PASS     │ 1.4.0           │                                    │
+│ 3   │ IoC Database                       │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Attack Vectors                     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Sensitive Data Patterns            │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ CWE Database                       │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ MITRE ATT&CK Mapping               │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data: yaml/attack_vectors.yaml     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data:                              │ BLOCK  │ PASS     │ -               │                                    │
+│     │ yaml/infinitered_campaign.yaml     │        │          │                 │                                    │
+│ 3   │ Data: yaml/ioc_indicators.yaml     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data: yaml/mitre_mapping.yaml      │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data: yaml/redcap_baseline.yaml    │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data:                              │ BLOCK  │ PASS     │ -               │                                    │
+│     │ yaml/redcap_forum_observations.ya… │        │          │                 │                                    │
+│ 3   │ Data: yaml/security_rules.yaml     │ BLOCK  │ PASS     │ -               │                                    │
+│ 3   │ Data:                              │ BLOCK  │ PASS     │ -               │                                    │
+│     │ yaml/sensitive_data_patterns.yaml  │        │          │                 │                                    │
+│ 3   │ ATT&CK Enterprise                  │ WARN   │ PASS     │ -               │ Full ATT&CK Enterprise bundle      │
+│     │                                    │        │          │                 │ available                          │
+│ 4   │ trivy                              │ BLOCK  │ PASS     │ Version: 0.58.2 │                                    │
+│ 4   │ yara                               │ BLOCK  │ PASS     │ 4.5.2           │                                    │
+│ 4   │ semgrep                            │ BLOCK  │ PASS     │ 1.175.0         │                                    │
+│ 4   │ docker                             │ WARN   │ WARN     │ -               │ 'docker' not found on PATH -       │
+│     │                                    │        │          │                 │ Required for DAST (dynamic         │
+│     │                                    │        │          │                 │ application security testing)      │
+│     │                                    │        │          │                 │ disabled                           │
+│     │                                    │        │          │                 │ fix: winget install                │
+│     │                                    │        │          │                 │ Docker.DockerDesktop --source      │
+│     │                                    │        │          │                 │ winget or download from            │
+│     │                                    │        │          │                 │ https://docker.com                 │
+│ 5   │ Network                            │ WARN   │ PASS     │ -               │ Online - enrichment services       │
+│     │                                    │        │          │                 │ reachable                          │
+└─────┴────────────────────────────────────┴────────┴──────────┴─────────────────┴────────────────────────────────────┘
+[OK] Preflight validation passed for generated case.toml.
+
+Ready! You can now run 'python main.py scan' using case.toml.

@@ -8,8 +8,8 @@ of the match, and the corresponding IoC IDs from
 The catalogue is REDCap-specific. Two facts drive it:
 
     * REDCap is MySQL-only (per the official installation guide). A
-      SQLite file in the webroot is an anomaly; the InfiniteRed
-      campaign (Vanderbilt advisories, Dec 2025 - Feb 2026) is the
+      SQLite file in the webroot is an anomaly; the REDCap Community
+      Forum / Vanderbilt advisories (Dec 2025 - Feb 2026) are the
       reason category A exists in its current form.
     * REDCap exposes admin-driven file-write surfaces (External
       Modules, ``.user.ini`` for some hosting setups, hook function

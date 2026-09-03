@@ -61,6 +61,10 @@ python main.py scan                     # mode comes from case.toml
 For live progress on Windows PowerShell 5.1 (which buffers redirected
 output), set `$env:PYTHONUNBUFFERED = '1'` before invoking `main.py`.
 
+> **New to REDACTS?** Sec.4.8 walks through one complete real run —
+> environment prep, preflight, `init`, all four scan phases, and how to read the
+> result — with a screenshot of every step.
+
 ---
 
 ## 2. `case.toml` - single source of truth
@@ -358,6 +362,194 @@ full data. If you would rather have full enrichment, stop the scan
   place the extracted `cwec_v4.19.csv` into `threat_base/data/`.
 
 Then re-run the scan. The notice disappears once the file is present.
+
+### 4.7 INFINITERED: what REDACTS proves, and what it does not
+
+REDACTS carries two separate bodies of evidence for REDCap compromise. Reports
+label which one a finding came from, because they do not mean the same thing.
+
+| Stream | What it is | What a hit means |
+|---|---|---|
+| **GTIG INFINITERED (exact)** | The seven SHA-256 digests, the `G_Backdoor_INFINITERED_1` YARA rule, and the literal implant strings published by the Google Threat Intelligence Group for UNC6508 (Sept 2023 – Nov 2025) | **Family attribution.** Reported as *conclusive*. Treat the host as compromised and start incident response. |
+| **REDCap Community Forum** | REDCap-specific persistence and hygiene patterns reported by the Consortium community (Dec 2025 – Feb 2026) — SQLite `redcap.db`, `eval(gzinflate(...))` chains, `.user.ini auto_prepend_file`, PHP in `/edocs/` | **A strong lead, not proof.** Reported as *suspicious* at unchanged severity. Investigate; corroborate with a hash or YARA hit before calling it INFINITERED. |
+
+GTIG **did not confirm how UNC6508 gained initial access**. REDACTS therefore
+ships no exploit rule and no CVE claim for this campaign, and a clean scan is not
+evidence that entry did not occur.
+
+Two specific cautions:
+
+- **`help.php` on its own is not evidence.** GTIG documented a web shell with
+  that name, but REDCap ships legitimate help pages. Corroborate with a digest or
+  YARA match.
+- **A bare `REDCAP-TOKEN` string is not evidence.** REDCap and its modules use
+  token language legitimately. The backdoor pairs that cookie with a magic flag —
+  that paired form is what REDACTS treats as conclusive.
+
+#### Hunt list — not detectable from a PHP tree
+
+These are published INFINITERED indicators that no filesystem scanner can see.
+Check them in the relevant system, not in REDACTS:
+
+| Indicator | Where to look | What a hit proves |
+|---|---|---|
+| Workspace compliance rule named **`Patroit`** (sic) | Google Workspace admin console → compliance/routing rules | Silent mail forwarding was configured. Strong. |
+| BCC recipient **`BebitaBarefoot774@gmail.com`** | Mail gateway / Workspace audit logs | Exfiltration destination. Strong. |
+| Admin login from **`23.169.65.49`** | REDCap and OS auth logs | Login from a host GTIG tied to the actor. Corroborate — IPs are reassigned. |
+| Session rows keyed `xc32038474a…` | `SELECT session_id FROM redcap_sessions WHERE session_id LIKE 'xc32038474a%'` | Harvested credentials stored in your database. Rotate every REDCap credential. |
+
+The backdoor's command tags (`00`, `02`, `03`, `04`, `05`) are recorded in the
+bundled YARA file as analyst context only. They are too short to search for
+safely and REDACTS does not scan for them.
+
+Google also published five **YARA-L** rules for this campaign. Those run in
+Google SecOps against logs, not against files, so REDACTS does not ship them —
+use them in SecOps if you have it.
+
+Source for everything above: Google Threat Intelligence Group,
+<https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research>
+(retrieved 2026-07-28). If you find evidence of compromise, contact your security
+team and the REDCap Consortium.
+
+### 4.8 Worked example: a complete run, start to finish
+
+Every screen below is from one real scan of REDCap 15.7.4 — a deployed server
+tree checked against the official source release. Nothing is mocked up.
+
+| | |
+|---|---|
+| **Target** (under review) | `redcap_v15.7.4-server.zip` — 14,534 files |
+| **Reference** (known-good) | `redcap15.7.4-source.zip` |
+| **Python** | 3.12.10 |
+| **Mode** | static (`[dynamic].enabled = false`) |
+| **Wall clock** | 779.5 s (~13 min) |
+
+> **About the images.** The `.txt` captures in `docs/captures/` are byte-for-byte
+> what REDACTS wrote. Rich suppresses ANSI colour when output is redirected to a
+> file, so the `.png` versions re-apply the CLI's own colour scheme
+> (`PASS` green, `WARN` yellow, `FAIL` red, `BLOCK` magenta) to match what you
+> see on a live terminal. Only colour is added — no text is altered.
+
+#### Step 0 — Prepare the environment
+
+Install the Python dependencies (see [SETUP.md](SETUP.md) for the native
+binaries: Trivy, YARA, Semgrep):
+
+```bash
+python -m venv .venv          # use Python 3.13 or 3.12 — not 3.14
+.venv\Scripts\activate
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+#### Step 1 — Verify the environment
+
+```bash
+python main.py preflight
+```
+
+![Preflight](docs/captures/01_preflight.png)
+
+Read the **Tier** column, not just the colours. `BLOCK` items must pass;
+`WARN` items are optional. Above, `docker` is `WARN` because this is a
+static-only scan — that is expected, not a failure. Exit code `0` means ready.
+
+#### Step 2 — Create the case file
+
+`init` hashes both archives, auto-detects the available scanners, writes a valid
+`case.toml`, and re-runs preflight against it:
+
+```bash
+python main.py init \
+  --target   redcap/redcap_v15.7.4-server.zip \
+  --reference redcap/redcap15.7.4-source.zip \
+  --case-id "CASE-REDCAP-15.7.4" --analyst "Security Analyst"
+```
+
+![Init](docs/captures/02_init.png)
+
+```text
+Auto-detected scanners: regex, yara, trivy, semgrep
+[OK] Wrote contract template to case.toml
+[OK] Contract passed schema_version = 2 validation.
+[OK] Preflight validation passed for generated case.toml.
+```
+
+#### Step 3 — Run the scan
+
+```bash
+python main.py scan
+```
+
+The banner states the disclaimer every run — REDACTS is an analysis aid, not a
+verdict:
+
+![Banner](docs/captures/04_banner.png)
+
+Preflight runs again inside the scan, so a scan can never proceed on an
+environment that would silently produce partial coverage:
+
+![Preflight gate](docs/captures/05_preflight_inline.png)
+
+**Phase A — evidence collection.** Both archives are extracted, hashed
+(SHA-256), and content-typed with Magika. This is the slowest phase: two trees
+of ~14.5k files each.
+
+![Phase A](docs/captures/06_phase_a_collect.png)
+
+**Phase B — baseline diff and deep investigation.** The diff is the scoping
+layer: only files that differ from the reference go to deep analysis.
+
+![Phase B](docs/captures/07_phase_b_audit.png)
+
+```text
+0 modified, 2 added, 0 removed | Risk: LOW
+Investigation complete - 4 findings, risk=LOW
+```
+
+**Phase C — tool orchestration.** All five scanners run against the delta set.
+The per-tool `OK` / `FAILED` / `SKIPPED` line is the honest coverage record —
+check it before trusting a clean result.
+
+![Phase C](docs/captures/08_phase_c_scan.png)
+
+```text
+semgrep: OK      trivy: OK      yara: OK
+magika:  OK      tree_sitter: OK
+Orchestrator: Complete - 0 findings, 0 corroborated, 98.0s
+```
+
+**Phase D — reports.**
+
+![Phase D](docs/captures/09_phase_d_reports.png)
+
+#### Step 4 — Read the result
+
+![Summary](docs/captures/10_summary.png)
+
+```text
+Evidence    14534 files
+Audit       LOW | Delta 1 file, 4 findings
+Tool Scan   0 findings
+Duration    779.5s
+SCAN EXIT: 0
+```
+
+> The screenshot above reads `Delta1 files`; the text block reads `Delta 1 file`.
+> That capture was taken just before a spacing/pluralisation fix to the summary
+> table. The captures are kept byte-exact rather than edited after the fact, so
+> the image is left as recorded — the text block shows current output.
+
+Exit `0` = no finding reached the `[static].severity_gate`. See Sec.4.3 for the
+three report types and which to read first.
+
+**Interpreting this particular run.** Two files existed in the deployment but
+not the official release — `ControlCenter/error_log` and
+`ControlCenter/repomix-output.xml`. Both are reported as *added* (the anomaly is
+never hidden), but neither is malicious: a PHP error log and a leftover Repomix
+bundle. The overall verdict is **LOW** and no INFINITERED attribution is
+claimed, because no GTIG-published hash, YARA hit, or implant string was found.
+That is the correct outcome for a clean-but-customised install — see Sec.4.7 for
+what REDACTS will and will not call INFINITERED.
 
 ---
 

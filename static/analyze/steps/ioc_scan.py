@@ -85,6 +85,8 @@ class IocScanStep:
             findings.extend(self._ioc_directory_exists(ioc, root))
         elif method in ("file_location", "content_check"):
             findings.extend(self._ioc_file_location(ioc, root))
+        elif method == "hash_match":
+            findings.extend(self._ioc_hash_match(ioc, root, only_files=only_files))
         elif method == "hash_compare":
             findings.extend(self._ioc_hash_flag(ioc, root))
 
@@ -298,6 +300,58 @@ class IocScanStep:
                             )
                     except Exception as exc:
                         logger.debug("Polyglot check failed for %s: %s", rel, exc)
+
+        return findings
+
+    def _ioc_hash_match(
+        self, ioc: IoC, root: Path, *, only_files: set[str] | None = None
+    ) -> list[InvestigationFinding]:
+        """Match files against published known-bad SHA-256 digests.
+
+        An exact digest match is the only filesystem evidence that attributes a
+        file to a malware family on its own - everything else in this scanner is
+        a lead that needs corroboration. Digests come from ``known_bad_sha256``
+        in ``ioc_indicators.yaml`` and are published, not inferred.
+        """
+        findings: list[InvestigationFinding] = []
+        wanted = set(ioc.known_bad_sha256)
+        if not wanted:
+            return findings
+
+        for fpath in root.rglob("*"):
+            if not fpath.is_file():
+                continue
+            rel = rel_path(fpath, root)
+            if only_files is not None and rel not in only_files:
+                continue
+            try:
+                digest = sha256(fpath).lower()
+            except OSError as exc:  # unreadable file must not abort the scan
+                logger.debug("Hash read failed for %s: %s", rel, exc)
+                continue
+            if digest not in wanted:
+                continue
+
+            findings.append(
+                InvestigationFinding(
+                    id="",
+                    source="ioc_scan",
+                    severity=ioc.severity,
+                    title=ioc.name,
+                    description=ioc.description,
+                    file_path=rel,
+                    line=0,
+                    conclusiveness=ioc.conclusiveness.value,
+                    category=ioc.category.value,
+                    recommendation=ioc.recommendation,
+                    evidence={
+                        "ioc_id": ioc.id,
+                        "detection_method": "hash_match",
+                        "sha256": digest,
+                        "references": list(ioc.references),
+                    },
+                )
+            )
 
         return findings
 

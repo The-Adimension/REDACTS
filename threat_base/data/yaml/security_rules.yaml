@@ -181,34 +181,52 @@ rules:
     cwe: CWE-94
     recommendation: "Use preg_replace_callback instead"
 
-  # INFINITERED Campaign IoC Rules
+  # REDCap Community Forum / Vanderbilt advisory observations
+  #
+  # Reported by the REDCap Consortium community, Dec 2025 - Feb 2026. Severities
+  # are unchanged. These are NOT attributed to INFINITERED - GTIG published none
+  # of them as that family. Attribution requires a published hash or a
+  # G_Backdoor_INFINITERED_1 YARA hit (see SEC100+).
 
   - id: SEC060
-    severity: CRITICAL
-    category: infinitered
+    severity: HIGH
+    category: redcap_forum
     pattern: 'REDCAP[_-]TOKEN|redcap[_-]token'
     pattern_flags: null
-    message: "INFINITERED IoC: REDCAP-TOKEN string detected"
+    message: "REDCAP-TOKEN string detected"
     cwe: CWE-506
-    recommendation: "Known INFINITERED malware indicator - investigate immediately"
+    recommendation: >-
+      Review the surrounding code. REDCap and its modules use token language
+      legitimately for API tokens, so this alone is not malware evidence. The
+      INFINITERED backdoor pairs this cookie with a magic flag - see SEC100/SEC104.
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: SEC061
     severity: CRITICAL
-    category: infinitered
+    category: redcap_forum
     pattern: '\beval\s*\(\s*(?:gzinflate|gzuncompress)\s*\(\s*base64_decode'
     pattern_flags: IGNORECASE
-    message: "INFINITERED IoC: eval(gzinflate(base64_decode())) chain"
+    message: "Obfuscated payload chain: eval(gzinflate(base64_decode()))"
     cwe: CWE-506
-    recommendation: "Known INFINITERED payload delivery pattern - isolate and analyze"
+    recommendation: >-
+      Obfuscated payload delivery, common to many PHP webshell families. Isolate
+      and analyze. Attribution to a specific family requires a hash or YARA match.
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: SEC062
     severity: HIGH
-    category: infinitered
+    category: redcap_forum
     pattern: 'redcap\.db|redcap_\.db'
     pattern_flags: IGNORECASE
-    message: "INFINITERED IoC: redcap.db persistence artifact reference"
+    message: "redcap.db SQLite artefact reference"
     cwe: CWE-506
-    recommendation: "SQLite database used for INFINITERED C2/persistence - investigate"
+    recommendation: >-
+      REDCap runs on MySQL, so a SQLite database reference in the tree is
+      unexpected. Investigate its origin and contents.
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: SEC063
     severity: HIGH
@@ -239,12 +257,16 @@ rules:
 
   - id: SEC066
     severity: HIGH
-    category: infinitered
+    category: redcap_forum
     pattern: 'SQLite format 3|PRAGMA\s+journal_mode|sqlite_master'
     pattern_flags: IGNORECASE
-    message: "SQLite operations detected - check for INFINITERED redcap.db artifact"
+    message: "SQLite operations detected - unexpected for REDCap (MySQL)"
     cwe: CWE-506
-    recommendation: "Unexpected SQLite usage may indicate INFINITERED persistence layer"
+    recommendation: >-
+      REDCap uses MySQL exclusively, so SQLite usage in the tree is anomalous.
+      Identify what wrote it. Not family attribution on its own.
+    references:
+      - "REDCap Community Forum Dec 2025-Feb 2026"
 
   - id: SEC067
     severity: CRITICAL
@@ -568,3 +590,154 @@ rules:
     message: "Multi-layer obfuscation chain - strong indicator of packed malware"
     cwe: CWE-506
     recommendation: "Nested encoding/compression chains are the hallmark of PHP backdoors."
+
+  # GTIG-published INFINITERED / UNC6508 literals
+  #
+  # Source: Google Threat Intelligence Group, retrieved 2026-07-28
+  #   https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research
+  # Strings are taken verbatim from GTIG YARA rule G_Backdoor_INFINITERED_1,
+  # pinned at threat_base/data/yara/G_Backdoor_INFINITERED_1.yar.
+  #
+  # A hit on any of these is family attribution, not a generic lead. Keep them
+  # exact - loosening a pattern here turns confirmation back into a guess.
+
+  - id: SEC100
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'ej671a16i7fd8202nu6ltfg5p6x7u'
+    pattern_flags: null
+    message: "INFINITERED magic flag (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      GTIG-published INFINITERED backdoor command gate ($magic_flag). Preserve the
+      file and timestamps, isolate the host, and follow your IR process.
+      Source: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC101
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'ZWo2NzFhMTZpN2ZkODIwMm51Nmx0Zmc1cDZ4N3U'
+    pattern_flags: null
+    message: "INFINITERED magic flag, base64 form (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      Base64-encoded INFINITERED magic flag ($magic_flag_base64). Same handling as
+      SEC100.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC102
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'b49e334d-9c01-463e-9bc5-00a6920fb66e'
+    pattern_flags: IGNORECASE
+    message: "INFINITERED GUID marker (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      Delimiter GUID used by the INFINITERED upgrade-intercept dropper ($marker).
+      Check REDCap upgrade archives and hooks/auth/upgrade files for injection.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC103
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'YjQ5ZTMzNGQtOWMwMS00NjNlLTliYzUtMDBhNjkyMGZiNjZl'
+    pattern_flags: null
+    message: "INFINITERED GUID marker, base64 form (GTIG)"
+    cwe: CWE-506
+    recommendation: "Base64-encoded INFINITERED delimiter GUID ($marker_base64). Same handling as SEC102."
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC104
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'substr\s*\(\s*\$cookieValue\s*,\s*strlen\s*\(\s*\$magic_flag\s*\)\s*\)'
+    pattern_flags: null
+    message: "INFINITERED cookie gate: REDCAP-TOKEN sliced past the magic flag (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      GTIG YARA $s1 - the backdoor command channel. This is the paired,
+      high-confidence form of SEC060; the cookie name alone is not evidence.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC105
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'INSERT\s+INTO\s+redcap_sessions\s*\(\s*session_id\s*,\s*session_data\s*,\s*session_expiration\s*\)'
+    pattern_flags: IGNORECASE
+    message: "INFINITERED credential-harvest INSERT into redcap_sessions (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      GTIG YARA $t2 - harvested credentials hidden in the legitimate
+      redcap_sessions table. Treat stored credentials as compromised and rotate.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC106
+    severity: CRITICAL
+    category: infinitered
+    pattern: "encrypt\\s*\\(\\s*\\$currentUTC\\s*\\.\\s*'\\[::\\]'"
+    pattern_flags: null
+    message: "INFINITERED credential encryption with [::] delimiter (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      GTIG YARA $t3 - username and password joined with the [::] delimiter before
+      encryption. Rotate all REDCap credentials.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC107
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'xc32038474a'
+    pattern_flags: null
+    message: "INFINITERED harvested-credential session prefix (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      Session rows holding harvested credentials are keyed with this prefix.
+      Query redcap_sessions for session_id LIKE 'xc32038474a%' during IR.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC108
+    severity: CRITICAL
+    category: infinitered
+    pattern: '\$zip->getFromName\s*\(\s*\$file_(?:hooks|auth|upgrade)\s*\)'
+    pattern_flags: null
+    message: "INFINITERED upgrade-archive injection (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      GTIG YARA $u4-$u6 - the dropper rewrites hooks/auth/upgrade members inside a
+      REDCap upgrade archive so the implant survives an upgrade. Verify the
+      integrity of your upgrade packages before re-running them.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC109
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'str_replace\s*\(\s*\$search_content\s*,\s*\$(?:hooks|auth|upgrade)_decode\s*,'
+    pattern_flags: null
+    message: "INFINITERED upgrade-archive content rewrite (GTIG)"
+    cwe: CWE-506
+    recommendation: "GTIG YARA $u7-$u9 - implant re-injection into upgrade content. Same handling as SEC108."
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"
+
+  - id: SEC110
+    severity: CRITICAL
+    category: infinitered
+    pattern: 'getcwd\(\), php_uname\(\), phpversion\(\)'
+    pattern_flags: null
+    message: "INFINITERED host beacon (GTIG)"
+    cwe: CWE-506
+    recommendation: >-
+      GTIG YARA $s2 - system-information beacon fired when the backdoor receives
+      an empty payload.
+    references:
+      - "GTIG, retrieved 2026-07-28: https://cloud.google.com/blog/topics/threat-intelligence/prc-targets-us-medical-research"

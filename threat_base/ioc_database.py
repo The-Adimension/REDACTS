@@ -60,7 +60,13 @@ class IoCCategory(Enum):
     CREDENTIAL = "credential"  # Credential exposure/theft
     WEBSHELL = "webshell"  # Web shell indicators
     SUPPLY_CHAIN = "supply_chain"  # Dependency tampering
-    INFINITERED = "infinitered"  # INFINITERED-specific campaign indicators
+    # GTIG-published INFINITERED / UNC6508 evidence ONLY - hashes, YARA hits,
+    # and literal implant strings. A hit here is family attribution.
+    INFINITERED = "infinitered"
+    # REDCap Consortium community observations (Dec 2025 - Feb 2026): REDCap-
+    # specific persistence and hygiene patterns that GTIG did not publish as
+    # INFINITERED. Actionable, but not family attribution.
+    REDCAP_FORUM = "redcap_forum"
 
 
 @dataclass
@@ -80,6 +86,10 @@ class IoC:
     recommendation: str = ""
     references: list[str] = field(default_factory=list)
     cwe: str = ""
+    # Published known-bad SHA-256 digests, lowercase hex. Used by the
+    # ``hash_match`` detection method: an exact digest match is the only
+    # filesystem evidence that attributes a file to a malware family on its own.
+    known_bad_sha256: list[str] = field(default_factory=list)
 
 
 # --- Load externalized data from YAML --------------
@@ -182,6 +192,9 @@ class IoCDatabase:
                 recommendation=raw.get("recommendation", ""),
                 references=raw.get("references", []),
                 cwe=raw.get("cwe", ""),
+                known_bad_sha256=[
+                    h.strip().lower() for h in raw.get("known_bad_sha256", [])
+                ],
             )
             self._iocs.append(ioc)
             self._by_id[ioc.id] = ioc

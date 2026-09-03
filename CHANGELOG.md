@@ -3,6 +3,67 @@
 All notable changes to REDACTS are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601 (UTC).
 
+## [4.1.0] - 2026-09-03
+
+A detection-accuracy release. No breaking changes; no configuration changes
+required. If you run REDACTS on Windows, this release also fixes a false
+"tampered with" error on a fresh clone.
+
+### Fixed
+
+- **Generic PHP persistence was reported as a conclusive INFINITERED
+  compromise.** REDACTS carried two legitimate evidence streams merged under
+  one family name, with almost all of it marked `conclusive`. A stock REDCap
+  tree containing a `.git` directory could therefore be reported as a confirmed
+  INFINITERED compromise. The two streams are now separate records:
+  - GTIG-published INFINITERED / UNC6508 markers (hashes, YARA, implant
+    literals) - these remain `conclusive`.
+  - REDCap Community Forum / Vanderbilt observations - retained in full at
+    their original severities, but reported as `suspicious`.
+
+  Every indicator in both records now carries a citation (previously 1 of 17).
+
+- **Integrity check failed on a fresh Windows clone.** The repository shipped no
+  `.gitattributes`, so with `core.autocrlf=true` checkout rewrote LF to CRLF in
+  the SHA-256-verified threat data and the loader aborted with "This file may
+  have been maliciously modified to bypass security detection rules". The
+  integrity-covered paths are now pinned to LF.
+
+- Summary table printed `Delta1 files`; fixed spacing and pluralisation.
+
+- Dropped two noisy `upgrade_analyzer` rules (bare `unlink`, bare `return`) that
+  matched ordinary PHP control flow and buried real signals.
+
+### Added
+
+- The seven GTIG-published SHA-256 digests, matched via a new `hash_match`
+  detection method. An exact digest match is the only filesystem evidence
+  treated as family attribution on its own.
+- `G_Backdoor_INFINITERED_1.yar` pinned on disk and loaded offline - never
+  fetched at scan time.
+- `SEC100`-`SEC110`: GTIG literal rules (magic flag and its base64 form, GUID
+  marker, cookie gate, `redcap_sessions` INSERT, `[::]` encryption, session
+  prefix, upgrade-archive injection, host beacon).
+- `UPG060`-`UPG062`: the published upgrade-archive injection mechanism.
+- USER_GUIDE Sec.4.7 - what REDACTS will and will not call INFINITERED,
+  including the indicators no filesystem scanner can see.
+- USER_GUIDE Sec.4.8 - a screenshot walkthrough of a complete real run.
+
+### Changed
+
+- `SEC060` keeps its `REDCAP-TOKEN` pattern but no longer claims INFINITERED;
+  the cookie name alone collides with legitimate REDCap API-token language.
+  GTIG's YARA pairs it with the magic flag - that paired form is `SEC104`.
+- `SEC061`, `SEC062`, `SEC066` recategorised to `redcap_forum`; patterns and
+  severities unchanged.
+
+### Verification
+
+938 tests passing. Verified end-to-end against REDCap 15.7.4 (deployed server
+tree vs official source archive, 14,534 files): exit 0, risk LOW, zero
+conclusive compromise indicators, no family attribution claimed. The same
+comparison previously reported CRITICAL.
+
 ## [4.0.0] - 2026-07-24
 
 A security-and-correctness hardening release. Several fixes change observable
