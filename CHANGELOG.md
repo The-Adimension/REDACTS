@@ -21,7 +21,12 @@ required. If you run REDACTS on Windows, this release also fixes a false
   - REDCap Community Forum / Vanderbilt observations - retained in full at
     their original severities, but reported as `suspicious`.
 
-  Every indicator in both records now carries a citation (previously 1 of 17).
+  Every indicator in those two records carries a citation: 11/11 GTIG and
+  17/17 Consortium. In `ioc_indicators.yaml` - the file that drives live
+  detection - the six INFINITERED- and forum-attributed IOCs are now cited,
+  up from 1 of 17. The remaining 12 are generic REDCap hardening checks
+  (config integrity, file presence, supply chain); they are not attributed
+  to either evidence stream and are unchanged by this release.
 
 - **Integrity check failed on a fresh Windows clone.** The repository shipped no
   `.gitattributes`, so with `core.autocrlf=true` checkout rewrote LF to CRLF in
